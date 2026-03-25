@@ -46,6 +46,8 @@ if (caPath) {
   _httpsAgent = new https.Agent({ ca: caCert })
 
   console.error(`  [TLS] CA loaded: ${caPath}`)
+} else {
+  console.error('  [TLS] CA未設定 (社内エラー時は ~/.migi/zscaler-ca.pem を配置)')
 }
 
 export const httpsAgent = _httpsAgent
