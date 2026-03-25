@@ -10,6 +10,10 @@ import { isEmptyWorkspace, runOnboarding } from '../src/onboarding.js'
 
 dotenv.config()
 
+// ---- readline を最初に作る（全ての対話で共用） ----
+const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
+const promptFn = (q) => new Promise((resolve) => rl.question(q, resolve))
+
 // ---- APIキー・設定の解決（優先度: 環境変数 > グローバル設定 > セットアップ） ----
 let apiKey = process.env.OPENAI_API_KEY
 let model = 'gpt-4o'
@@ -29,16 +33,11 @@ if (!apiKey) {
   }
 }
 
-// ---- readline を先に作る（オンボーディングでも使うため） ----
-const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
-const promptFn = (q) => new Promise((resolve) => rl.question(q, resolve))
-
 // ---- 空ワークスペース検出 → オンボーディング ----
 const cwd = process.cwd()
 if (isEmptyWorkspace(cwd)) {
   const proceed = await promptFn(
-    chalk.cyan('\n  Migi v0.1.0  —  by MAKE U FREE\n') +
-    chalk.white('\n  このフォルダにはまだ設定がありません。セットアップしますか？ [Y/n] ')
+    chalk.cyan('\n  このフォルダにはまだ設定がありません。セットアップしますか？ [Y/n] ')
   )
   if (proceed.trim().toLowerCase() !== 'n') {
     await runOnboarding(cwd, promptFn)
@@ -68,12 +67,12 @@ function prompt() {
 
     // --- ビルトインコマンド ---
     if (input === '/exit' || input === '/quit') {
-      console.log(chalk.cyan('\n  お疲れ様でした！\n'))
+      console.log(chalk.cyan(`\n  お疲れ様でした！またね。\n`))
       process.exit(0)
     }
 
     if (input === '/config') {
-      await runSetup()
+      await runSetup(promptFn)
       console.log(chalk.yellow('  再起動して設定を反映してください。\n'))
       return prompt()
     }
@@ -94,7 +93,7 @@ function prompt() {
         return prompt()
       } else {
         console.log(chalk.yellow(`  スキル「${parsed.name}」が見つかりません。`))
-        console.log(chalk.dim(`  .migi/skills/${parsed.name}.md を作成するか、ビルトインスキルを使ってください。\n`))
+        console.log(chalk.dim(`  .migi/skills/${parsed.name}.md を作成してください。\n`))
         return prompt()
       }
     }
