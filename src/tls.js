@@ -1,19 +1,30 @@
-import { existsSync, readFileSync } from 'fs'
-import { join } from 'path'
+import { existsSync, readFileSync, readdirSync } from 'fs'
+import { join, extname } from 'path'
 import { homedir } from 'os'
 import https from 'https'
 import tls from 'tls'
 
-// CA ファイルの検索順（単体 .crt / bundle.pem どちらでも可）
-const CA_CANDIDATES = [
-  process.env.NODE_EXTRA_CA_CERTS,
-  join(homedir(), '.migi', 'zscaler-ca.pem'),
-  join(homedir(), '.migi', 'zscaler-ca.crt'),
-  join(homedir(), '.migi', 'ca-bundle.pem'),
-].filter(Boolean)
+// .migi/ ディレクトリ内の .crt / .pem を名前不問でスキャン
+function scanDir(dir) {
+  if (!existsSync(dir)) return []
+  try {
+    return readdirSync(dir)
+      .filter(f => ['.crt', '.pem'].includes(extname(f).toLowerCase()))
+      .map(f => join(dir, f))
+  } catch {
+    return []
+  }
+}
 
 function findCA() {
-  for (const p of CA_CANDIDATES) {
+  // 優先順: 環境変数 → カレント.migi/ → ホーム.migi/
+  const candidates = [
+    process.env.NODE_EXTRA_CA_CERTS,
+    ...scanDir(join(process.cwd(), '.migi')),
+    ...scanDir(join(homedir(), '.migi')),
+  ].filter(Boolean)
+
+  for (const p of candidates) {
     if (existsSync(p)) return p
   }
   return null
@@ -47,7 +58,7 @@ if (caPath) {
 
   console.log(`  [TLS] CA loaded: ${caPath}`)
 } else {
-  console.log('  [TLS] CA未設定 (社内エラー時は ~/.migi/zscaler-ca.pem を配置)')
+  console.log('  [TLS] CA未設定 (社内エラー時は .migi/ に .crt/.pem を配置)')
 }
 
 export const httpsAgent = _httpsAgent
