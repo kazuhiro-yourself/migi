@@ -65,7 +65,25 @@ ${userNameLine}
       (context ? `\n## ロードされたコンテキスト\n${context}` : '')
   }
 
+  // tool_calls に対応する tool 結果がない壊れた履歴を修復する
+  _sanitizeHistory() {
+    const cleaned = []
+    for (let i = 0; i < this.history.length; i++) {
+      const msg = this.history[i]
+      if (msg.role === 'assistant' && msg.tool_calls?.length) {
+        const toolIds = msg.tool_calls.map(t => t.id)
+        const hasAllResults = toolIds.every(id =>
+          this.history.slice(i + 1).some(m => m.role === 'tool' && m.tool_call_id === id)
+        )
+        if (!hasAllResults) continue  // 対応する結果がなければ丸ごとスキップ
+      }
+      cleaned.push(msg)
+    }
+    this.history = cleaned
+  }
+
   async chat(userMessage) {
+    this._sanitizeHistory()
     this.history.push({ role: 'user', content: userMessage })
 
     const messages = [
@@ -104,7 +122,11 @@ ${userNameLine}
           let result
 
           if (approved) {
-            result = await executeTool(name, args, { teamsWebhookUrl: this.teamsWebhookUrl })
+            try {
+              result = await executeTool(name, args, { teamsWebhookUrl: this.teamsWebhookUrl })
+            } catch (err) {
+              result = `エラー: ${err.message}`
+            }
           } else {
             result = 'ユーザーによりキャンセルされました'
             console.log(chalk.dim('  → キャンセル'))
