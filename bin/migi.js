@@ -5,6 +5,7 @@ import dotenv from 'dotenv'
 import { MigiAgent } from '../src/agent.js'
 import { loadContext } from '../src/context.js'
 import { loadGlobalConfig, runSetup } from '../src/setup.js'
+import { resolveSkill, parseSkillInput, expandSkill } from '../src/skills.js'
 
 dotenv.config()
 
@@ -18,7 +19,6 @@ if (!apiKey) {
     apiKey = config.openai_api_key
     model = config.model || 'gpt-4o'
   } else {
-    // 初回: 対話セットアップ
     const config = await runSetup()
     apiKey = config.openai_api_key
     model = config.model || 'gpt-4o'
@@ -26,46 +26,63 @@ if (!apiKey) {
 }
 
 // ---- コンテキスト読み込み ----
-const { context, loaded } = loadContext(process.cwd())
+const { context, loaded } = await loadContext(process.cwd())
 
 // ---- 起動メッセージ ----
 console.log(chalk.bold.cyan('\n  Migi v0.1.0  —  by MAKE U FREE'))
 console.log(chalk.gray(`  モデル: ${model}`))
 if (loaded.length > 0) {
-  console.log(chalk.dim(`  コンテキスト: ${loaded.join(', ')}`))
+  for (const l of loaded) console.log(chalk.dim(`  ✓ ${l}`))
 }
-console.log(chalk.dim('  /exit で終了\n'))
+console.log(chalk.dim('\n  /secretary  秘書モード'))
+console.log(chalk.dim('  /config     設定変更'))
+console.log(chalk.dim('  /exit       終了\n'))
 
 // ---- readline セットアップ ----
-const rl = readline.createInterface({
-  input: process.stdin,
-  output: process.stdout,
-})
-
+const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
 const promptFn = (q) => new Promise((resolve) => rl.question(q, resolve))
-
 const agent = new MigiAgent({ context, promptFn, apiKey, model })
 
 // ---- メインループ ----
 function prompt() {
   rl.question(chalk.cyan('> '), async (line) => {
     const input = line.trim()
-
     if (!input) return prompt()
 
+    // --- ビルトインコマンド ---
     if (input === '/exit' || input === '/quit') {
       console.log(chalk.cyan('\n  お疲れ様でした！\n'))
       process.exit(0)
     }
 
-    // 設定変更コマンド
     if (input === '/config') {
-      const { runSetup } = await import('../src/setup.js')
       await runSetup()
       console.log(chalk.yellow('  再起動して設定を反映してください。\n'))
       return prompt()
     }
 
+    // --- スキルルーティング ---
+    const parsed = parseSkillInput(input)
+    if (parsed) {
+      const skill = resolveSkill(parsed.name, process.cwd())
+      if (skill) {
+        console.log(chalk.dim(`  [スキル: ${parsed.name}]\n`))
+        const expanded = expandSkill(skill.content, parsed.args)
+        try {
+          const reply = await agent.chat(expanded)
+          console.log('\n' + reply + '\n')
+        } catch (err) {
+          console.error(chalk.red('\n  エラー: ' + err.message + '\n'))
+        }
+        return prompt()
+      } else {
+        console.log(chalk.yellow(`  スキル「${parsed.name}」が見つかりません。`))
+        console.log(chalk.dim(`  .migi/skills/${parsed.name}.md を作成するか、ビルトインスキルを使ってください。\n`))
+        return prompt()
+      }
+    }
+
+    // --- 通常チャット ---
     try {
       const reply = await agent.chat(input)
       console.log('\n' + reply + '\n')
