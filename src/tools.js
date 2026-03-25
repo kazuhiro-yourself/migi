@@ -1,8 +1,10 @@
 import { readFileSync, writeFileSync, appendFileSync, existsSync, mkdirSync } from 'fs'
 import { execSync } from 'child_process'
 import { dirname, extname } from 'path'
+import { request } from 'https'
 import { glob } from 'glob'
 import xlsxPkg from 'xlsx'
+import { httpsAgent } from './tls.js'
 const { readFile: xlsxReadFile, utils: xlsxUtils } = xlsxPkg
 
 // ---- OpenAI ツールスキーマ定義 ----
@@ -179,13 +181,29 @@ export async function executeTool(name, args, opts = {}) {
       const url = opts.teamsWebhookUrl
       if (!url) return 'エラー: Teams Webhook URL が設定されていません'
       const body = JSON.stringify({ text: args.message })
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body
+      return new Promise((resolve) => {
+        const parsed = new URL(url)
+        const options = {
+          hostname: parsed.hostname,
+          path: parsed.pathname + parsed.search,
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Content-Length': Buffer.byteLength(body)
+          },
+          ...(httpsAgent ? { agent: httpsAgent } : {})
+        }
+        const req = request(options, (res) => {
+          if (res.statusCode >= 200 && res.statusCode < 300) {
+            resolve('Teams に通知しました')
+          } else {
+            resolve(`エラー: Teams への送信に失敗しました (${res.statusCode})`)
+          }
+        })
+        req.on('error', (err) => resolve(`エラー: ${err.message}`))
+        req.write(body)
+        req.end()
       })
-      if (!res.ok) return `エラー: Teams への送信に失敗しました (${res.status})`
-      return 'Teams に通知しました'
     }
 
     default:
