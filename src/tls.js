@@ -17,11 +17,13 @@ function scanDir(dir) {
 }
 
 function findCA() {
-  // 優先順: 環境変数 → カレント.migi/ → ホーム.migi/
+  // 優先順: 環境変数 → カレント.migi/ → カレント直下 → ホーム.migi/ → ホーム直下
   const candidates = [
     process.env.NODE_EXTRA_CA_CERTS,
     ...scanDir(join(process.cwd(), '.migi')),
+    ...scanDir(process.cwd()),
     ...scanDir(join(homedir(), '.migi')),
+    ...scanDir(homedir()),
   ].filter(Boolean)
 
   for (const p of candidates) {
@@ -58,7 +60,7 @@ if (caPath) {
 
   console.log(`  [TLS] CA loaded: ${caPath}`)
 } else {
-  console.log('  [TLS] CA未設定 (社内エラー時は .migi/ に .crt/.pem を配置)')
+  console.log('  [TLS] CA未設定 (社内エラー時は ~/.migi/ か ~/ に .crt/.pem を配置)')
 }
 
 export const httpsAgent = _httpsAgent
