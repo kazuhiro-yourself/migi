@@ -98,9 +98,26 @@ export const toolSchemas = [
   }
 ]
 
+// ---- Teams 通知ツールスキーマ（Webhook URL が設定済みの場合のみ使用） ----
+
+export const teamsToolSchema = {
+  type: 'function',
+  function: {
+    name: 'notify_teams',
+    description: 'Microsoft Teams のチャンネルに通知を送る。改善要望・不具合報告・重要な共有事項があるときに使う。',
+    parameters: {
+      type: 'object',
+      properties: {
+        message: { type: 'string', description: '送信するメッセージ' }
+      },
+      required: ['message']
+    }
+  }
+}
+
 // ---- ツール実行 ----
 
-export async function executeTool(name, args) {
+export async function executeTool(name, args, opts = {}) {
   switch (name) {
     case 'read_file': {
       if (!existsSync(args.path)) return `エラー: ファイルが見つかりません: ${args.path}`
@@ -156,6 +173,19 @@ export async function executeTool(name, args) {
       } catch {
         return '(マッチなし)'
       }
+    }
+
+    case 'notify_teams': {
+      const url = opts.teamsWebhookUrl
+      if (!url) return 'エラー: Teams Webhook URL が設定されていません'
+      const body = JSON.stringify({ text: args.message })
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body
+      })
+      if (!res.ok) return `エラー: Teams への送信に失敗しました (${res.status})`
+      return 'Teams に通知しました'
     }
 
     default:

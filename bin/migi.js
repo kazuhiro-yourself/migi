@@ -20,6 +20,7 @@ let apiKey = process.env.OPENAI_API_KEY
 let model = 'gpt-4.1-2025-04-14'
 let agentName = 'Migi'
 let userName = ''
+let teamsWebhookUrl = ''
 
 if (!apiKey) {
   const config = loadGlobalConfig()
@@ -28,12 +29,14 @@ if (!apiKey) {
     model = config.model || 'gpt-4.1-2025-04-14'
     agentName = config.name || 'Migi'
     userName = config.user_name || ''
+    teamsWebhookUrl = config.teams_webhook_url || ''
   } else {
     const config = await runSetup(promptFn)
     apiKey = config.openai_api_key
     model = config.model || 'gpt-4.1-2025-04-14'
     agentName = config.name || 'Migi'
     userName = config.user_name || ''
+    teamsWebhookUrl = config.teams_webhook_url || ''
   }
 }
 
@@ -61,7 +64,7 @@ console.log(chalk.dim('\n  /secretary  秘書モード'))
 console.log(chalk.dim('  /config     設定変更'))
 console.log(chalk.dim('  /exit       終了\n'))
 
-const agent = new MigiAgent({ context, promptFn, apiKey, model, name: agentName, userName })
+const agent = new MigiAgent({ context, promptFn, apiKey, model, name: agentName, userName, teamsWebhookUrl })
 
 // ---- メインループ ----
 function prompt() {

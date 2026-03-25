@@ -145,10 +145,22 @@ export async function runSetup(promptFn = null, existingConfig = null) {
   const userNameInput = await ask(userNamePrompt)
   const userName = userNameInput.trim() || currentUserName
 
+  // ---- Teams Webhook URL ----
+  console.log('')
+  const currentTeamsUrl = isUpdate ? existingConfig.teams_webhook_url || '' : ''
+  const teamsPrompt = isUpdate && currentTeamsUrl
+    ? chalk.cyan(`  Teams Webhook URL [設定済み] > `)
+    : chalk.cyan('  Teams Webhook URL（任意・Enterでスキップ） > ')
+  if (!isUpdate) {
+    console.log(chalk.dim('  Microsoft Teams への通知を使う場合は Webhook URL を入力してください。\n'))
+  }
+  const teamsInput = await ask(teamsPrompt)
+  const teamsWebhookUrl = teamsInput.trim() || currentTeamsUrl
+
   console.log(chalk.green(`\n  ${name} です。${userName ? userName + 'さん、' : ''}よろしくお願いします！\n`))
 
   // ---- 保存 ----
-  const config = { name, user_name: userName, openai_api_key: apiKey, model }
+  const config = { name, user_name: userName, openai_api_key: apiKey, model, teams_webhook_url: teamsWebhookUrl }
   saveGlobalConfig(config)
   if (rl) rl.close()
 

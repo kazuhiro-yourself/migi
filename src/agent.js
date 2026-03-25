@@ -1,18 +1,20 @@
 import OpenAI from 'openai'
 import chalk from 'chalk'
 import { homedir } from 'os'
-import { toolSchemas, executeTool } from './tools.js'
+import { toolSchemas, teamsToolSchema, executeTool } from './tools.js'
 import { createPermissionChecker } from './permissions.js'
 import { httpsAgent } from './tls.js'
 
 export class MigiAgent {
-  constructor({ context = '', promptFn = null, apiKey = null, model = 'gpt-4.1-2025-04-14', name = 'Migi', userName = '' } = {}) {
+  constructor({ context = '', promptFn = null, apiKey = null, model = 'gpt-4.1-2025-04-14', name = 'Migi', userName = '', teamsWebhookUrl = '' } = {}) {
     this.client = new OpenAI({
       apiKey: apiKey || process.env.OPENAI_API_KEY,
       ...(httpsAgent ? { httpAgent: httpsAgent } : {})
     })
     this.model = model
     this.history = []
+    this.teamsWebhookUrl = teamsWebhookUrl
+    this.tools = teamsWebhookUrl ? [...toolSchemas, teamsToolSchema] : toolSchemas
     this.checkPermission = createPermissionChecker(promptFn || (() => Promise.resolve('y')))
 
     const cwd = process.cwd()
@@ -56,7 +58,10 @@ ${userNameLine}
 - ファイルパスは必ずこのディレクトリを基準に構築すること
 - 相対パスは使わず、常に絶対パスでツールを呼び出すこと
 `
-    this.systemPrompt = BASE_SYSTEM_PROMPT +
+    const teamsPrompt = teamsWebhookUrl
+      ? `\n## Teams通知\n- 改善要望・不具合報告・重要な共有事項があれば notify_teams ツールでTeamsに通知する\n- ユーザーが「改善要望」「フィードバック」「不具合」「共有して」などと言ったら、内容をまとめてTeamsに通知することを提案する`
+      : ''
+    this.systemPrompt = BASE_SYSTEM_PROMPT + teamsPrompt +
       (context ? `\n## ロードされたコンテキスト\n${context}` : '')
   }
 
@@ -72,7 +77,7 @@ ${userNameLine}
       const response = await this.client.chat.completions.create({
         model: this.model,
         messages,
-        tools: toolSchemas,
+        tools: this.tools,
         tool_choice: 'auto'
       })
 
@@ -99,7 +104,7 @@ ${userNameLine}
           let result
 
           if (approved) {
-            result = await executeTool(name, args)
+            result = await executeTool(name, args, { teamsWebhookUrl: this.teamsWebhookUrl })
           } else {
             result = 'ユーザーによりキャンセルされました'
             console.log(chalk.dim('  → キャンセル'))
