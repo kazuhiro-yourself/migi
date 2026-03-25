@@ -4,7 +4,7 @@ import { toolSchemas, executeTool } from './tools.js'
 import { createPermissionChecker } from './permissions.js'
 
 export class MigiAgent {
-  constructor({ context = '', promptFn = null, apiKey = null, model = 'gpt-4o' } = {}) {
+  constructor({ context = '', promptFn = null, apiKey = null, model = 'gpt-4o', name = 'Migi' } = {}) {
     this.client = new OpenAI({ apiKey: apiKey || process.env.OPENAI_API_KEY })
     this.model = model
     this.history = []
@@ -12,7 +12,10 @@ export class MigiAgent {
 
     const cwd = process.cwd()
     const BASE_SYSTEM_PROMPT = `\
-あなたは Migi（ミギ）です。ユーザーの右腕として動くAIエージェントです。
+あなたの名前は「${name}」です。ユーザーがつけてくれた名前です。
+自己紹介や会話の中で、この名前を自分の名前として使ってください。
+
+あなたはユーザーの右腕として動くAIエージェントです。
 仕事も人生も、何でも一緒に動きます。
 ファイルの読み書き・コマンド実行・情報整理・壁打ち・タスク管理、何でもこなします。
 

@@ -13,16 +13,19 @@ dotenv.config()
 // ---- APIキー・設定の解決（優先度: 環境変数 > グローバル設定 > セットアップ） ----
 let apiKey = process.env.OPENAI_API_KEY
 let model = 'gpt-4o'
+let agentName = 'Migi'
 
 if (!apiKey) {
   const config = loadGlobalConfig()
   if (config?.openai_api_key) {
     apiKey = config.openai_api_key
     model = config.model || 'gpt-4o'
+    agentName = config.name || 'Migi'
   } else {
-    const config = await runSetup()
+    const config = await runSetup(promptFn)
     apiKey = config.openai_api_key
     model = config.model || 'gpt-4o'
+    agentName = config.name || 'Migi'
   }
 }
 
@@ -46,7 +49,7 @@ if (isEmptyWorkspace(cwd)) {
 const { context, loaded } = await loadContext(cwd)
 
 // ---- 起動メッセージ ----
-console.log(chalk.bold.cyan('\n  Migi v0.1.0  —  by MAKE U FREE'))
+console.log(chalk.bold.cyan(`\n  ${agentName}  —  by MAKE U FREE`))
 console.log(chalk.gray(`  モデル: ${model}`))
 if (loaded.length > 0) {
   for (const l of loaded) console.log(chalk.dim(`  ✓ ${l}`))
@@ -55,7 +58,7 @@ console.log(chalk.dim('\n  /secretary  秘書モード'))
 console.log(chalk.dim('  /config     設定変更'))
 console.log(chalk.dim('  /exit       終了\n'))
 
-const agent = new MigiAgent({ context, promptFn, apiKey, model })
+const agent = new MigiAgent({ context, promptFn, apiKey, model, name: agentName })
 
 // ---- メインループ ----
 function prompt() {

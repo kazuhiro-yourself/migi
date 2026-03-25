@@ -21,26 +21,46 @@ export function saveGlobalConfig(config) {
   writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2), 'utf-8')
 }
 
-export async function runSetup() {
-  console.log(chalk.bold.cyan('\n  Migi v0.1.0  —  by MAKE U FREE'))
-  console.log(chalk.cyan('  ─────────────────────────────────'))
-  console.log(chalk.white('  初めまして！右腕のセットアップを始めます。\n'))
+export async function runSetup(promptFn = null) {
+  // readline を外から受け取るか、自前で作る
+  let rl = null
+  let ask = promptFn
+  if (!ask) {
+    rl = readline.createInterface({ input: process.stdin, output: process.stdout })
+    ask = (q) => new Promise((resolve) => rl.question(q, resolve))
+  }
 
-  const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
-  const ask = (q) => new Promise((resolve) => rl.question(q, resolve))
+  // ---- 自己紹介 ----
+  console.log(chalk.bold.cyan('\n  ╔══════════════════════════════════════╗'))
+  console.log(chalk.bold.cyan('  ║   Migi  —  by MAKE U FREE            ║'))
+  console.log(chalk.bold.cyan('  ╚══════════════════════════════════════╝\n'))
+  console.log(chalk.white('  はじめまして！'))
+  console.log(chalk.white('  私はあなたの右腕として動く AI エージェントです。\n'))
+  console.log(chalk.dim('  タスク管理・壁打ち・ファイル操作・コマンド実行...'))
+  console.log(chalk.dim('  仕事も人生も、何でも一緒に動きます。\n'))
+  console.log(chalk.white('  ひとつお願いがあります。'))
+  console.log(chalk.white('  ─── 名前をつけてもらえますか？ ───\n'))
+  console.log(chalk.dim('  あなただけの右腕として、その名前で動きます。'))
+  console.log(chalk.dim('  例: ミギ、アシ、レン、なんでも OK\n'))
 
-  // --- API キー ---
-  console.log(chalk.dim('  OpenAI APIキーを入力してください。'))
+  const nameInput = await ask(chalk.cyan('  名前 > '))
+  const name = nameInput.trim() || 'Migi'
+
+  console.log(chalk.green(`\n  ${name} です。よろしくお願いします！\n`))
+  console.log(chalk.dim('  ─────────────────────────────────────\n'))
+
+  // ---- API キー ----
+  console.log(chalk.dim('  OpenAI API キーを入力してください。'))
   console.log(chalk.dim('  取得: https://platform.openai.com/api-keys\n'))
   const apiKey = await ask(chalk.white('  API キー > '))
 
   if (!apiKey.trim()) {
-    console.log(chalk.red('\n  APIキーが入力されていません。終了します。\n'))
-    rl.close()
+    console.log(chalk.red('\n  API キーが入力されていません。終了します。\n'))
+    if (rl) rl.close()
     process.exit(1)
   }
 
-  // --- モデル選択 ---
+  // ---- モデル選択 ----
   console.log('')
   console.log(chalk.dim('  使用するモデルを選んでください。'))
   console.log(chalk.dim('  1) gpt-4o        （高性能・推奨）'))
@@ -56,16 +76,15 @@ export async function runSetup() {
     model = custom.trim() || 'gpt-4o'
   }
 
-  // --- 保存 ---
-  const config = { openai_api_key: apiKey.trim(), model }
+  // ---- 保存 ----
+  const config = { name, openai_api_key: apiKey.trim(), model }
   saveGlobalConfig(config)
-
-  rl.close()
+  if (rl) rl.close()
 
   console.log(chalk.green(`\n  セットアップ完了！`))
-  console.log(chalk.dim(`  設定を保存しました: ${CONFIG_PATH}`))
-  console.log(chalk.dim(`  モデル: ${model}\n`))
-  console.log(chalk.cyan('  ─────────────────────────────────\n'))
+  console.log(chalk.dim(`  名前: ${name} / モデル: ${model}`))
+  console.log(chalk.dim(`  設定: ${CONFIG_PATH}\n`))
+  console.log(chalk.cyan('  ─────────────────────────────────────\n'))
 
   return config
 }
