@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+// 企業ネットワーク（SSLインスペクション）対応
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0'
 import readline from 'readline'
 import chalk from 'chalk'
 import dotenv from 'dotenv'
