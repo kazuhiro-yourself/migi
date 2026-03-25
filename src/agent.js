@@ -18,8 +18,9 @@ const BASE_SYSTEM_PROMPT = `\
 `
 
 export class MigiAgent {
-  constructor({ context = '', promptFn = null } = {}) {
-    this.client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+  constructor({ context = '', promptFn = null, apiKey = null, model = 'gpt-4o' } = {}) {
+    this.client = new OpenAI({ apiKey: apiKey || process.env.OPENAI_API_KEY })
+    this.model = model
     this.history = []
     this.checkPermission = createPermissionChecker(promptFn || (() => Promise.resolve('y')))
     this.systemPrompt = BASE_SYSTEM_PROMPT +
@@ -36,7 +37,7 @@ export class MigiAgent {
 
     while (true) {
       const response = await this.client.chat.completions.create({
-        model: 'gpt-4o',
+        model: this.model,
         messages,
         tools: toolSchemas,
         tool_choice: 'auto'
