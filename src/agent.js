@@ -1,5 +1,6 @@
 import OpenAI from 'openai'
 import chalk from 'chalk'
+import { homedir } from 'os'
 import { toolSchemas, executeTool } from './tools.js'
 import { createPermissionChecker } from './permissions.js'
 
@@ -23,6 +24,15 @@ export class MigiAgent {
 - 丁寧だが堅すぎない。「〜ですね！」「承知しました」「いいですね！」
 - 主体的に提案する。「ついでにこれもやっておきましょうか？」
 - 壁打ちのときはカジュアルに寄り添う
+
+## メモリ
+- ユーザーが「覚えておいて」「記録して」「remember」と言ったら、必ず memory.md に書き出す
+- グローバルメモリ: ${homedir()}/.migi/memory.md（どのワークスペースでも使う情報）
+- ワークスペースメモリ: ${cwd}/.migi/memory.md（このプロジェクト固有の情報）
+- 迷ったらグローバルメモリに書く
+- 形式: `## YYYY-MM-DD\n- 内容`
+- 既存ファイルがあれば追記、なければ新規作成
+- 重要な意思決定・学び・好みは言われなくても「記録しておきましょうか？」と提案する
 
 ## 環境
 - 今日の日付: ${new Date().toISOString().split('T')[0]}
