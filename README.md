@@ -215,3 +215,50 @@ node /path/to/migi/bin/migi.js
 > /config              # 設定変更
 > /exit                # 終了
 ```
+
+---
+
+## 企業ネットワーク（Zscaler等）対応
+
+ZscalerなどSSLインスペクションを行う企業プロキシ環境では、CA証明書を追加することで安全に通信できます。
+
+### 手順
+
+**1. ZscalerのCA証明書を取得する**
+
+ブラウザ（Chrome）の場合:
+1. `chrome://settings/security` → 証明書の管理 → 認証局
+2. Zscaler Root CA を選択してエクスポート（PEM形式）
+
+または社内IT部門から `ZscalerRootCertificate.crt` を入手する。
+
+**2. `~/.migi/` に配置する**
+
+```bash
+# Windows（PowerShell）
+mkdir $env:USERPROFILE\.migi
+copy ZscalerRootCertificate.crt $env:USERPROFILE\.migi\zscaler-ca.crt
+
+# Mac / Linux
+mkdir -p ~/.migi
+cp ZscalerRootCertificate.crt ~/.migi/zscaler-ca.pem
+```
+
+**3. そのまま起動する**
+
+migi は起動時に以下の順で CA ファイルを自動検出します:
+
+```
+~/.migi/zscaler-ca.pem   ← 推奨
+~/.migi/zscaler-ca.crt
+~/.migi/ca-bundle.pem    ← 複数CA連結バンドルも可
+```
+
+見つかった場合は自動的に TLS に組み込まれます。手動での設定は不要です。
+
+**環境変数で直接指定することも可能:**
+
+```bash
+set NODE_EXTRA_CA_CERTS=C:\path\to\your-ca.pem   # Windows
+export NODE_EXTRA_CA_CERTS=~/certs/your-ca.pem   # Mac/Linux
+```

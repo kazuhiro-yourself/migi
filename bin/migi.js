@@ -1,6 +1,5 @@
 #!/usr/bin/env node
-// 企業ネットワーク（SSLインスペクション）対応
-process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0'
+import '../src/tls.js'  // 企業CA（Zscaler等）を起動直後に読み込む
 import readline from 'readline'
 import chalk from 'chalk'
 import dotenv from 'dotenv'

@@ -4,6 +4,7 @@ import { homedir } from 'os'
 import readline from 'readline'
 import chalk from 'chalk'
 import OpenAI from 'openai'
+import { httpsAgent } from './tls.js'
 
 export const MIGI_DIR = join(homedir(), '.migi')
 export const CONFIG_PATH = join(MIGI_DIR, 'config.json')
@@ -20,7 +21,7 @@ export function loadGlobalConfig() {
 async function extractName(apiKey, model, input) {
   if (!input) return 'Migi'
   try {
-    const client = new OpenAI({ apiKey })
+    const client = new OpenAI({ apiKey, ...(httpsAgent ? { httpAgent: httpsAgent } : {}) })
     const res = await client.chat.completions.create({
       model,
       messages: [{
