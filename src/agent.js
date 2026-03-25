@@ -13,7 +13,7 @@ export class MigiAgent {
 
     const cwd = process.cwd()
     const userNameLine = userName
-      ? `ユーザーの名前は「${userName}」です。会話の中でこの名前で呼んでください。`
+      ? `ユーザーの名前は「${userName}」です。会話の中でこの名前で呼んでください。「さん」などの敬称は不要です。`
       : ''
     const BASE_SYSTEM_PROMPT = `\
 あなたの名前は「${name}」です。ユーザーがつけてくれた名前です。
