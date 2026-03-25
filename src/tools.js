@@ -1,7 +1,9 @@
 import { readFileSync, writeFileSync, appendFileSync, existsSync, mkdirSync } from 'fs'
 import { execSync } from 'child_process'
-import { dirname } from 'path'
+import { dirname, extname } from 'path'
 import { glob } from 'glob'
+import xlsxPkg from 'xlsx'
+const { readFile: xlsxReadFile, utils: xlsxUtils } = xlsxPkg
 
 // ---- OpenAI ツールスキーマ定義 ----
 
@@ -102,6 +104,17 @@ export async function executeTool(name, args) {
   switch (name) {
     case 'read_file': {
       if (!existsSync(args.path)) return `エラー: ファイルが見つかりません: ${args.path}`
+      const ext = extname(args.path).toLowerCase()
+      if (ext === '.xlsx' || ext === '.xls') {
+        const workbook = xlsxReadFile(args.path)
+        const result = []
+        for (const sheetName of workbook.SheetNames) {
+          const sheet = workbook.Sheets[sheetName]
+          const csv = xlsxUtils.sheet_to_csv(sheet)
+          result.push(`## シート: ${sheetName}\n${csv}`)
+        }
+        return result.join('\n\n')
+      }
       return readFileSync(args.path, 'utf-8')
     }
 
