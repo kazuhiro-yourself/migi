@@ -1,0 +1,24 @@
+{
+  "name": "migi",
+  "version": "0.1.0",
+  "description": "Your AI right-hand agent. Works anywhere, with any LLM API.",
+  "type": "module",
+  "bin": {
+    "migi": "./bin/migi.js"
+  },
+  "scripts": {
+    "start": "node bin/migi.js"
+  },
+  "dependencies": {
+    "chalk": "^5.3.0",
+    "dotenv": "^16.4.0",
+    "glob": "^11.0.0",
+    "openai": "^4.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": ["ai", "agent", "cli", "openai", "secretary"],
+  "author": "MAKE U FREE",
+  "license": "MIT"
+}
