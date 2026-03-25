@@ -79,6 +79,28 @@ function prompt() {
       return prompt()
     }
 
+    if (input === '/models') {
+      try {
+        console.log(chalk.dim('\n  利用可能なモデルを取得中...\n'))
+        const OpenAI = (await import('openai')).default
+        const client = new OpenAI({ apiKey })
+        const res = await client.models.list()
+        const models = res.data
+          .map(m => m.id)
+          .filter(id => id.includes('gpt') || id.includes('o1') || id.includes('o3') || id.includes('o4'))
+          .sort()
+        console.log(chalk.cyan('  利用可能なモデル:'))
+        for (const m of models) {
+          const mark = m === model ? chalk.green(' ← 現在') : ''
+          console.log(chalk.dim(`  • ${m}`) + mark)
+        }
+        console.log(chalk.dim('\n  /config でモデルを変更できます。\n'))
+      } catch (err) {
+        console.error(chalk.red('\n  取得失敗: ' + err.message + '\n'))
+      }
+      return prompt()
+    }
+
     // --- スキルルーティング ---
     const parsed = parseSkillInput(input)
     if (parsed) {
