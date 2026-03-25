@@ -41,13 +41,13 @@ if (caPath) {
 
   // ① tls.createSecureContext パッチ
   //    Node 18+ built-in fetch (undici) を含む全TLS接続に効く
+  //    デフォルトのCA（tls.rootCertificates）に追加する形にする
   const _origCreate = tls.createSecureContext
   tls.createSecureContext = (options = {}) => {
-    const extra = [caCert]
-    const existing = options.ca
+    const base = options.ca
       ? (Array.isArray(options.ca) ? options.ca : [options.ca])
-      : []
-    return _origCreate({ ...options, ca: [...existing, ...extra] })
+      : tls.rootCertificates   // デフォルトCAを引き継ぐ
+    return _origCreate({ ...options, ca: [...base, caCert] })
   }
 
   // ② NODE_EXTRA_CA_CERTS（環境変数で起動する場合のフォールバック）
@@ -55,8 +55,8 @@ if (caPath) {
     process.env.NODE_EXTRA_CA_CERTS = caPath
   }
 
-  // ③ https.Agent（node-fetch 系フォールバック）
-  _httpsAgent = new https.Agent({ ca: caCert })
+  // ③ https.Agent: デフォルトCA + Zscaler CA を合わせて渡す
+  _httpsAgent = new https.Agent({ ca: [...tls.rootCertificates, caCert] })
 
   console.log(`  [TLS] CA loaded: ${caPath}`)
 } else {
