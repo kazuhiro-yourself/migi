@@ -18,7 +18,7 @@ const promptFn = (q) => new Promise((resolve) => rl.question(q, resolve))
 
 // ---- APIキー・設定の解決（優先度: 環境変数 > グローバル設定 > セットアップ） ----
 let apiKey = process.env.OPENAI_API_KEY
-let model = 'gpt-4o'
+let model = 'gpt-4.1-2025-04-14'
 let agentName = 'Migi'
 
 if (!apiKey) {

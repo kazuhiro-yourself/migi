@@ -73,17 +73,20 @@ export async function runSetup(promptFn = null) {
   // ---- モデル選択 ----
   console.log('')
   console.log(chalk.dim('  使用するモデルを選んでください。'))
-  console.log(chalk.dim('  1) gpt-4o        （高性能・推奨）'))
-  console.log(chalk.dim('  2) gpt-4o-mini   （高速・低コスト）'))
-  console.log(chalk.dim('  3) その他        （直接入力）\n'))
+  console.log(chalk.dim('  1) gpt-4.1-2025-04-14  （推奨・エージェント特化）'))
+  console.log(chalk.dim('  2) gpt-4o              （汎用）'))
+  console.log(chalk.dim('  3) gpt-4o-mini         （高速・低コスト）'))
+  console.log(chalk.dim('  4) その他              （直接入力）\n'))
   const modelChoice = await ask(chalk.white('  選択 [1] > '))
 
-  let model = 'gpt-4o'
+  let model = 'gpt-4.1-2025-04-14'
   if (modelChoice.trim() === '2') {
-    model = 'gpt-4o-mini'
+    model = 'gpt-4o'
   } else if (modelChoice.trim() === '3') {
+    model = 'gpt-4o-mini'
+  } else if (modelChoice.trim() === '4') {
     const custom = await ask(chalk.white('  モデル名 > '))
-    model = custom.trim() || 'gpt-4o'
+    model = custom.trim() || 'gpt-4.1-2025-04-14'
   }
 
   // ---- 名前（AIで解釈） ----

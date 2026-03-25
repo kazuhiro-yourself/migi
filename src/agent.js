@@ -5,7 +5,7 @@ import { toolSchemas, executeTool } from './tools.js'
 import { createPermissionChecker } from './permissions.js'
 
 export class MigiAgent {
-  constructor({ context = '', promptFn = null, apiKey = null, model = 'gpt-4o', name = 'Migi' } = {}) {
+  constructor({ context = '', promptFn = null, apiKey = null, model = 'gpt-4.1-2025-04-14', name = 'Migi' } = {}) {
     this.client = new OpenAI({ apiKey: apiKey || process.env.OPENAI_API_KEY })
     this.model = model
     this.history = []
