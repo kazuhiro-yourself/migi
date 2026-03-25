@@ -6,6 +6,7 @@ import { MigiAgent } from '../src/agent.js'
 import { loadContext } from '../src/context.js'
 import { loadGlobalConfig, runSetup } from '../src/setup.js'
 import { resolveSkill, parseSkillInput, expandSkill } from '../src/skills.js'
+import { isEmptyWorkspace, runOnboarding } from '../src/onboarding.js'
 
 dotenv.config()
 
@@ -25,8 +26,24 @@ if (!apiKey) {
   }
 }
 
+// ---- readline を先に作る（オンボーディングでも使うため） ----
+const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
+const promptFn = (q) => new Promise((resolve) => rl.question(q, resolve))
+
+// ---- 空ワークスペース検出 → オンボーディング ----
+const cwd = process.cwd()
+if (isEmptyWorkspace(cwd)) {
+  const proceed = await promptFn(
+    chalk.cyan('\n  Migi v0.1.0  —  by MAKE U FREE\n') +
+    chalk.white('\n  このフォルダにはまだ設定がありません。セットアップしますか？ [Y/n] ')
+  )
+  if (proceed.trim().toLowerCase() !== 'n') {
+    await runOnboarding(cwd, promptFn)
+  }
+}
+
 // ---- コンテキスト読み込み ----
-const { context, loaded } = await loadContext(process.cwd())
+const { context, loaded } = await loadContext(cwd)
 
 // ---- 起動メッセージ ----
 console.log(chalk.bold.cyan('\n  Migi v0.1.0  —  by MAKE U FREE'))
@@ -38,9 +55,6 @@ console.log(chalk.dim('\n  /secretary  秘書モード'))
 console.log(chalk.dim('  /config     設定変更'))
 console.log(chalk.dim('  /exit       終了\n'))
 
-// ---- readline セットアップ ----
-const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
-const promptFn = (q) => new Promise((resolve) => rl.question(q, resolve))
 const agent = new MigiAgent({ context, promptFn, apiKey, model })
 
 // ---- メインループ ----
