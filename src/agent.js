@@ -3,7 +3,15 @@ import chalk from 'chalk'
 import { toolSchemas, executeTool } from './tools.js'
 import { createPermissionChecker } from './permissions.js'
 
-const BASE_SYSTEM_PROMPT = `\
+export class MigiAgent {
+  constructor({ context = '', promptFn = null, apiKey = null, model = 'gpt-4o' } = {}) {
+    this.client = new OpenAI({ apiKey: apiKey || process.env.OPENAI_API_KEY })
+    this.model = model
+    this.history = []
+    this.checkPermission = createPermissionChecker(promptFn || (() => Promise.resolve('y')))
+
+    const cwd = process.cwd()
+    const BASE_SYSTEM_PROMPT = `\
 あなたは Migi（ミギ）です。ユーザーの右腕として動くAIエージェントです。
 仕事も人生も、何でも一緒に動きます。
 ファイルの読み書き・コマンド実行・情報整理・壁打ち・タスク管理、何でもこなします。
@@ -13,16 +21,12 @@ const BASE_SYSTEM_PROMPT = `\
 - 主体的に提案する。「ついでにこれもやっておきましょうか？」
 - 壁打ちのときはカジュアルに寄り添う
 
-## 日付
-今日の日付: ${new Date().toISOString().split('T')[0]}
+## 環境
+- 今日の日付: ${new Date().toISOString().split('T')[0]}
+- カレントディレクトリ: ${cwd}
+- ファイルパスは必ずこのディレクトリを基準に構築すること
+- 相対パスは使わず、常に絶対パスでツールを呼び出すこと
 `
-
-export class MigiAgent {
-  constructor({ context = '', promptFn = null, apiKey = null, model = 'gpt-4o' } = {}) {
-    this.client = new OpenAI({ apiKey: apiKey || process.env.OPENAI_API_KEY })
-    this.model = model
-    this.history = []
-    this.checkPermission = createPermissionChecker(promptFn || (() => Promise.resolve('y')))
     this.systemPrompt = BASE_SYSTEM_PROMPT +
       (context ? `\n## ロードされたコンテキスト\n${context}` : '')
   }
