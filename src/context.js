@@ -11,6 +11,19 @@ export async function loadContext(cwd = process.cwd()) {
   const parts = []
   const loaded = []
 
+  // MIGI.md を優先、なければ CLAUDE.md にフォールバック
+  const loadWithFallback = (labelPrefix, dir, filename) => {
+    const migiPath = join(dir, 'MIGI.md')
+    const claudePath = join(dir, filename)
+    if (existsSync(migiPath)) {
+      parts.push(`### ${labelPrefix}MIGI.md\n${readFileSync(migiPath, 'utf-8')}`)
+      loaded.push(`${labelPrefix}MIGI.md`)
+    } else if (existsSync(claudePath)) {
+      parts.push(`### ${labelPrefix}${filename}\n${readFileSync(claudePath, 'utf-8')}`)
+      loaded.push(`${labelPrefix}${filename}`)
+    }
+  }
+
   const load = (label, path) => {
     if (existsSync(path)) {
       parts.push(`### ${label}\n${readFileSync(path, 'utf-8')}`)
@@ -24,24 +37,34 @@ export async function loadContext(cwd = process.cwd()) {
   // 2. ワークスペースメモリ (.migi/memory.md)
   load('ワークスペースメモリ', join(cwd, '.migi', 'memory.md'))
 
-  // 3. ルートの CLAUDE.md
-  load('CLAUDE.md', join(cwd, 'CLAUDE.md'))
+  // 3. ルートの MIGI.md → CLAUDE.md
+  loadWithFallback('', cwd, 'CLAUDE.md')
 
-  // 4. .company/ 以下のすべての CLAUDE.md（secretary を最初に）
+  // 4. .company/ 以下（MIGI.md 優先、なければ CLAUDE.md）
   const companyDir = join(cwd, '.company')
   if (existsSync(companyDir)) {
-    const files = await glob('**/CLAUDE.md', { cwd: companyDir })
+    const migiFiles = await glob('**/MIGI.md', { cwd: companyDir })
+    const claudeFiles = await glob('**/CLAUDE.md', { cwd: companyDir })
 
-    // CLAUDE.md（ルート）→ secretary → その他 の順に読む
-    files.sort((a, b) => {
-      if (a === 'CLAUDE.md') return -1
-      if (b === 'CLAUDE.md') return 1
-      if (a.startsWith('secretary')) return -1
-      if (b.startsWith('secretary')) return 1
-      return a.localeCompare(b)
+    // MIGI.md があるディレクトリは MIGI.md を使い、CLAUDE.md はスキップ
+    const migiDirs = new Set(migiFiles.map(f => dirname(f)))
+    const allFiles = [
+      ...migiFiles,
+      ...claudeFiles.filter(f => !migiDirs.has(dirname(f)))
+    ]
+
+    // ルート → secretary → その他 の順
+    allFiles.sort((a, b) => {
+      const aBase = a.replace(/\/(MIGI|CLAUDE)\.md$/, '').replace(/^(MIGI|CLAUDE)\.md$/, '')
+      const bBase = b.replace(/\/(MIGI|CLAUDE)\.md$/, '').replace(/^(MIGI|CLAUDE)\.md$/, '')
+      if (!aBase) return -1
+      if (!bBase) return 1
+      if (aBase.startsWith('secretary')) return -1
+      if (bBase.startsWith('secretary')) return 1
+      return aBase.localeCompare(bBase)
     })
 
-    for (const file of files) {
+    for (const file of allFiles) {
       load(`.company/${file}`, join(companyDir, file))
     }
   }
