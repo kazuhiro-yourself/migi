@@ -44,7 +44,14 @@ export async function runSetup(promptFn = null) {
   console.log(chalk.dim('  例: ミギ、アシ、レン、なんでも OK\n'))
 
   const nameInput = await ask(chalk.cyan('  名前 > '))
-  const name = nameInput.trim() || 'Migi'
+  let name = nameInput.trim() || 'Migi'
+
+  // 長すぎる場合は確認
+  if (name.length > 8) {
+    console.log(chalk.dim(`\n  「${name}」ですね！`))
+    const shorter = await ask(chalk.white('  短縮しますか？する場合は入力を（そのままなら Enter） > '))
+    if (shorter.trim()) name = shorter.trim()
+  }
 
   console.log(chalk.green(`\n  ${name} です。よろしくお願いします！\n`))
   console.log(chalk.dim('  ─────────────────────────────────────\n'))
