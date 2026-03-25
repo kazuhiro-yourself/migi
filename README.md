@@ -8,39 +8,45 @@
 ## 全体アーキテクチャ
 
 ```mermaid
-flowchart TD
-  subgraph bin ["bin/"]
-    B["migi.js - エントリーポイント"]
+graph TD
+  subgraph bin
+    B[migi.js エントリーポイント]
   end
 
-  subgraph src ["src/"]
-    S["setup.js - 初回セットアップ"]
-    O["onboarding.js - ワークスペース初期化"]
-    C["context.js - コンテキスト読み込み"]
-    SK["skills.js - スキルルーティング"]
-    A["agent.js - 会話ループ"]
-    T["tools.js - ファイル操作・コマンド実行"]
-    P["permissions.js - 許可制システム"]
+  subgraph src
+    S[setup.js セットアップ]
+    O[onboarding.js ワークスペース初期化]
+    C[context.js コンテキスト読み込み]
+    SK[skills.js スキルルーティング]
+    A[agent.js 会話ループ]
+    T[tools.js ファイル操作・コマンド実行]
+    P[permissions.js 許可制]
   end
 
-  subgraph external ["外部"]
-    OAI["OpenAI API"]
+  subgraph fs
+    CFG[config.json APIキー・名前・モデル]
+    MEM[memory.md グローバルメモリ]
+    MIGIMD[MIGI.md ワークスペース設定]
+    SKILLS[skills/ スキルファイル]
+    TPL[templates/ 初期化テンプレート]
   end
 
-  subgraph fs ["ファイルシステム"]
-    CFG["~/.migi/config.json - APIキー・名前・モデル"]
-    MEM["~/.migi/memory.md - グローバルメモリ"]
-    MIGIMD[".company/MIGI.md - ワークスペース設定"]
-    SKILLS["skills/*.md - スキルファイル"]
-    TPL["templates/ - 初期化テンプレート"]
-  end
+  OAI[OpenAI API]
 
-  B --> S & O & C & SK & A
+  B --> S
+  B --> O
+  B --> C
+  B --> SK
+  B --> A
   S --> CFG
-  O --> TPL & MIGIMD
-  C --> MEM & MIGIMD
+  O --> TPL
+  O --> MIGIMD
+  C --> MEM
+  C --> MIGIMD
   SK --> SKILLS
-  A --> OAI & T & P
+  A --> OAI
+  A --> T
+  A --> P
 ```
 
 ---
@@ -48,30 +54,27 @@ flowchart TD
 ## 起動フロー
 
 ```mermaid
-flowchart TD
-  Start([migi 起動]) --> CheckCfg{"~/.migi/config.json\nがあるか？"}
+graph TD
+  Start([migi 起動]) --> CheckCfg{config.json があるか}
 
-  CheckCfg -->|なし| Setup["セットアップウィザード"]
-  Setup --> InputKey["① APIキー入力"]
-  InputKey --> SelectModel["② モデル選択\ngpt-4o / gpt-4o-mini / カスタム"]
-  SelectModel --> InputName["③ 名前入力"]
-  InputName --> AIName["AIが名前を解釈\n例: みぎにしよう → みぎ"]
-  AIName --> SaveCfg["config.json に保存"]
+  CheckCfg -->|なし| InputKey[APIキー入力]
+  InputKey --> SelectModel[モデル選択]
+  SelectModel --> InputName[名前入力]
+  InputName --> AIName[AIが名前を解釈]
+  AIName --> SaveCfg[config.json に保存]
   SaveCfg --> CheckWS
 
-  CheckCfg -->|あり| LoadCfg["設定読み込み\nAPIキー・モデル・名前"]
+  CheckCfg -->|あり| LoadCfg[設定読み込み]
   LoadCfg --> CheckWS
 
-  CheckWS{"MIGI.md または\n.company/ があるか？"}
-  CheckWS -->|なし| Onboarding["オンボーディング"]
-  Onboarding --> Q1["Q1: 事業・活動を教えて"]
-  Q1 --> Q2["Q2: 目標・困りごとを教えて"]
-  Q2 --> GenFiles[".company/MIGI.md\nsecretary/MIGI.md\ntodos/今日.md を生成"]
+  CheckWS{MIGI.md または .company があるか}
+  CheckWS -->|なし| Q1[Q1 事業・活動を教えて]
+  Q1 --> Q2[Q2 目標・困りごとを教えて]
+  Q2 --> GenFiles[.company/ を生成]
   GenFiles --> LoadCtx
 
-  CheckWS -->|あり| LoadCtx["コンテキスト読み込み"]
-  LoadCtx --> ReadFiles["MIGI.md を優先して読み込み\nなければ CLAUDE.md にフォールバック"]
-  ReadFiles --> Ready(["メインループ開始"])
+  CheckWS -->|あり| LoadCtx[コンテキスト読み込み]
+  LoadCtx --> Ready([メインループ開始])
 ```
 
 ---
@@ -81,7 +84,7 @@ flowchart TD
 ```mermaid
 sequenceDiagram
   actor User
-  participant CLI as bin/migi.js
+  participant CLI as migi.js
   participant Agent as agent.js
   participant OpenAI
   participant Tools as tools.js
@@ -89,7 +92,7 @@ sequenceDiagram
 
   User->>CLI: テキスト入力
 
-  alt スキルコマンド /secretary など
+  alt スキルコマンド
     CLI->>CLI: スキルファイルを検索
     CLI->>Agent: スキル内容＋入力を展開して送信
   else 通常テキスト
@@ -101,12 +104,10 @@ sequenceDiagram
   loop ツール呼び出しがある間
     OpenAI-->>Agent: tool_calls レスポンス
 
-    alt 読み取り系ツール（自動承認）
-      Note over Agent: read_file / list_files / search_content
+    alt 読み取り系 自動承認
       Agent->>Tools: 即実行
-    else 書き込み・実行系ツール（要確認）
-      Note over Agent: write_file / append_file / execute_command
-      Agent->>User: 実行しますか？ y/N
+    else 書き込み・実行系 要確認
+      Agent->>User: 実行しますか y/N
       User->>Agent: 承認 or 拒否
       Agent->>Tools: 承認なら実行
     end
@@ -117,7 +118,7 @@ sequenceDiagram
     Agent->>OpenAI: tool results を送信
   end
 
-  OpenAI-->>Agent: stop（最終回答）
+  OpenAI-->>Agent: 最終回答
   Agent-->>User: 返答を表示
 ```
 
@@ -126,23 +127,13 @@ sequenceDiagram
 ## コンテキスト読み込みの優先順位
 
 ```mermaid
-flowchart LR
-  subgraph global ["グローバル（優先）"]
-    A["~/.migi/memory.md"]
-    B[".migi/memory.md"]
-    C["MIGI.md（ルート）"]
-  end
-
-  subgraph company [".company/ 以下"]
-    D["MIGI.md（優先）"]
-    E["CLAUDE.md（フォールバック）"]
-    F["secretary/MIGI.md"]
-    G["その他部署/MIGI.md"]
-  end
-
-  A --> B --> C --> D
-  D -->|なければ| E
-  D --> F --> G
+graph LR
+  A[memory.md グローバル] --> B[memory.md ワークスペース]
+  B --> C[MIGI.md ルート]
+  C --> D[.company/MIGI.md]
+  D -->|なければ| E[.company/CLAUDE.md]
+  D --> F[secretary/MIGI.md]
+  F --> G[その他部署/MIGI.md]
 ```
 
 ---
@@ -150,15 +141,15 @@ flowchart LR
 ## スキルシステム
 
 ```mermaid
-flowchart TD
-  Input["入力: /secretary など"] --> Parse["コマンド名を抽出"]
-  Parse --> Search1[".migi/skills/secretary.md を探す\nユーザー定義"]
-  Search1 -->|あり| Load["スキルファイルを読み込む"]
-  Search1 -->|なし| Search2["skills/secretary.md を探す\nビルトイン"]
+graph TD
+  Input[入力 /secretary など] --> Parse[コマンド名を抽出]
+  Parse --> Search1[.migi/skills/ を探す ユーザー定義]
+  Search1 -->|あり| Load[スキルファイルを読み込む]
+  Search1 -->|なし| Search2[skills/ を探す ビルトイン]
   Search2 -->|あり| Load
-  Search2 -->|なし| NotFound["スキルが見つかりません"]
-  Load --> Expand["スキル内容＋ユーザー引数を展開"]
-  Expand --> Agent["エージェントに送信"]
+  Search2 -->|なし| NotFound[スキルが見つかりません]
+  Load --> Expand[スキル内容＋引数を展開]
+  Expand --> Agent[エージェントに送信]
 ```
 
 ---
@@ -184,15 +175,15 @@ migi/
 │   └── secretary-migi.md # secretary/MIGI.md のテンプレート
 └── package.json
 
-# ユーザーのワークスペース（起動ディレクトリ）
+# ユーザーのワークスペース
 {cwd}/
 ├── MIGI.md               # ワークスペース設定（なければ CLAUDE.md）
 ├── todos/
-│   └── YYYY-MM-DD.md    # 日次TODO
+│   └── YYYY-MM-DD.md
 └── .company/
-    ├── MIGI.md           # 組織設定
+    ├── MIGI.md
     └── secretary/
-        ├── MIGI.md       # 秘書ルール
+        ├── MIGI.md
         ├── inbox/
         └── notes/
 
