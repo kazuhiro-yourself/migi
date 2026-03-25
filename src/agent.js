@@ -5,16 +5,20 @@ import { toolSchemas, executeTool } from './tools.js'
 import { createPermissionChecker } from './permissions.js'
 
 export class MigiAgent {
-  constructor({ context = '', promptFn = null, apiKey = null, model = 'gpt-4.1-2025-04-14', name = 'Migi' } = {}) {
+  constructor({ context = '', promptFn = null, apiKey = null, model = 'gpt-4.1-2025-04-14', name = 'Migi', userName = '' } = {}) {
     this.client = new OpenAI({ apiKey: apiKey || process.env.OPENAI_API_KEY })
     this.model = model
     this.history = []
     this.checkPermission = createPermissionChecker(promptFn || (() => Promise.resolve('y')))
 
     const cwd = process.cwd()
+    const userNameLine = userName
+      ? `ユーザーの名前は「${userName}」です。会話の中でこの名前で呼んでください。`
+      : ''
     const BASE_SYSTEM_PROMPT = `\
 あなたの名前は「${name}」です。ユーザーがつけてくれた名前です。
 自己紹介や会話の中で、この名前を自分の名前として使ってください。
+${userNameLine}
 
 あなたはユーザーの右腕として動くAIエージェントです。
 仕事も人生も、何でも一緒に動きます。

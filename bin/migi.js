@@ -20,18 +20,21 @@ const promptFn = (q) => new Promise((resolve) => rl.question(q, resolve))
 let apiKey = process.env.OPENAI_API_KEY
 let model = 'gpt-4.1-2025-04-14'
 let agentName = 'Migi'
+let userName = ''
 
 if (!apiKey) {
   const config = loadGlobalConfig()
   if (config?.openai_api_key) {
     apiKey = config.openai_api_key
-    model = config.model || 'gpt-4o'
+    model = config.model || 'gpt-4.1-2025-04-14'
     agentName = config.name || 'Migi'
+    userName = config.user_name || ''
   } else {
     const config = await runSetup(promptFn)
     apiKey = config.openai_api_key
-    model = config.model || 'gpt-4o'
+    model = config.model || 'gpt-4.1-2025-04-14'
     agentName = config.name || 'Migi'
+    userName = config.user_name || ''
   }
 }
 
@@ -59,7 +62,7 @@ console.log(chalk.dim('\n  /secretary  秘書モード'))
 console.log(chalk.dim('  /config     設定変更'))
 console.log(chalk.dim('  /exit       終了\n'))
 
-const agent = new MigiAgent({ context, promptFn, apiKey, model, name: agentName })
+const agent = new MigiAgent({ context, promptFn, apiKey, model, name: agentName, userName })
 
 // ---- メインループ ----
 function prompt() {
@@ -74,7 +77,8 @@ function prompt() {
     }
 
     if (input === '/config') {
-      await runSetup(promptFn)
+      const current = loadGlobalConfig()
+      await runSetup(promptFn, current)
       console.log(chalk.yellow('  再起動して設定を反映してください。\n'))
       return prompt()
     }
