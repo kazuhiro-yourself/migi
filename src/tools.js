@@ -8,7 +8,8 @@ import chalk from 'chalk'
 import xlsxPkg from 'xlsx'
 import { createRequire } from 'module'
 const require = createRequire(import.meta.url)
-const pdfParse = require('pdf-parse')
+const _pdfParseModule = require('pdf-parse')
+const pdfParse = typeof _pdfParseModule === 'function' ? _pdfParseModule : _pdfParseModule.default
 import AdmZip from 'adm-zip'
 import OpenAI from 'openai'
 import { httpsAgent } from './tls.js'
@@ -233,11 +234,13 @@ export async function executeTool(name, args, opts = {}) {
         const buf = readFileSync(args.path)
 
         // Step 1: テキストPDFとして抽出を試みる
-        try {
-          const data = await pdfParse(buf)
-          const text = data.text?.trim()
-          if (text) return text
-        } catch (_) {}
+        if (typeof pdfParse === 'function') {
+          try {
+            const data = await pdfParse(buf)
+            const text = data.text?.trim()
+            if (text) return text
+          } catch (_) {}
+        }
 
         // Step 2: 画像PDFとしてVision APIでOCR（ネイティブ依存なし）
         if (!opts.apiKey) return '(テキストが抽出できませんでした)'
