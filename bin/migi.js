@@ -66,6 +66,23 @@ console.log(chalk.dim('  /exit       終了\n'))
 
 const agent = new MigiAgent({ context, promptFn, apiKey, model, name: agentName, userName, teamsWebhookUrl })
 
+// ---- 起動時ダッシュボード ----
+{
+  const today = new Date().toISOString().split('T')[0]
+  console.log('\n' + chalk.bold.cyan(`─── ${agentName} `) + chalk.dim('─'.repeat(Math.max(0, (process.stdout.columns || 80) - agentName.length - 5))))
+  try {
+    await agent.chat(
+      `起動した。以下の手順で今日の状況を確認して、簡潔にダッシュボードを表示してから、今一番優先すべきことを1つだけ提案して：\n` +
+      `1. todos/${today}.md を read_file で読んで未完了タスクを確認\n` +
+      `2. .migi/memory/next-actions.md があれば読む\n` +
+      `3. ダッシュボード（完了済み・未完了の件数サマリー）をコンパクトに出して、一言で「今日はこれから」と提案する\n` +
+      `（詳細な説明はいらない。テンポよく）`
+    )
+  } catch (err) {
+    console.error(chalk.red('  起動チェック失敗: ' + err.message))
+  }
+}
+
 function sep() {
   const w = process.stdout.columns || 80
   return chalk.dim('─'.repeat(w))
