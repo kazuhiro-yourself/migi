@@ -7,8 +7,9 @@ import { httpsAgent } from './tls.js'
 
 export class MigiAgent {
   constructor({ context = '', promptFn = null, apiKey = null, model = 'gpt-4.1-2025-04-14', name = 'Migi', userName = '', teamsWebhookUrl = '' } = {}) {
+    this.apiKey = apiKey || process.env.OPENAI_API_KEY
     this.client = new OpenAI({
-      apiKey: apiKey || process.env.OPENAI_API_KEY,
+      apiKey: this.apiKey,
       ...(httpsAgent ? { httpAgent: httpsAgent } : {})
     })
     this.model = model
@@ -123,7 +124,11 @@ ${userNameLine}
 
           if (approved) {
             try {
-              result = await executeTool(name, args, { teamsWebhookUrl: this.teamsWebhookUrl })
+              result = await executeTool(name, args, {
+              teamsWebhookUrl: this.teamsWebhookUrl,
+              apiKey: this.apiKey,
+              model: this.model
+            })
             } catch (err) {
               result = `エラー: ${err.message}`
             }

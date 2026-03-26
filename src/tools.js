@@ -4,8 +4,14 @@ import { dirname, extname } from 'path'
 import { request } from 'https'
 import { glob } from 'glob'
 import xlsxPkg from 'xlsx'
+import officeParser from 'officeparser'
+import OpenAI from 'openai'
 import { httpsAgent } from './tls.js'
 const { readFile: xlsxReadFile, utils: xlsxUtils } = xlsxPkg
+
+const IMAGE_EXTS = new Set(['.jpg', '.jpeg', '.png', '.gif', '.webp'])
+const OFFICE_EXTS = new Set(['.pdf', '.pptx', '.ppt', '.docx', '.doc', '.odp', '.odt'])
+const MIME = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.gif': 'image/gif', '.webp': 'image/webp' }
 
 // ---- OpenAI ツールスキーマ定義 ----
 
@@ -14,7 +20,7 @@ export const toolSchemas = [
     type: 'function',
     function: {
       name: 'read_file',
-      description: 'ファイルの内容を読み込む',
+      description: 'ファイルの内容を読み込む。テキスト・Excel・PDF・Word・PowerPoint・画像に対応',
       parameters: {
         type: 'object',
         properties: {
@@ -124,6 +130,8 @@ export async function executeTool(name, args, opts = {}) {
     case 'read_file': {
       if (!existsSync(args.path)) return `エラー: ファイルが見つかりません: ${args.path}`
       const ext = extname(args.path).toLowerCase()
+
+      // Excel
       if (ext === '.xlsx' || ext === '.xls') {
         const workbook = xlsxReadFile(args.path)
         const result = []
@@ -134,6 +142,40 @@ export async function executeTool(name, args, opts = {}) {
         }
         return result.join('\n\n')
       }
+
+      // PDF / PowerPoint / Word
+      if (OFFICE_EXTS.has(ext)) {
+        try {
+          const text = await officeParser.parseOfficeAsync(args.path)
+          return text?.trim() || '(テキストが抽出できませんでした)'
+        } catch (err) {
+          return `エラー: ファイルの解析に失敗しました: ${err.message}`
+        }
+      }
+
+      // 画像 → Vision API で内容を説明させる
+      if (IMAGE_EXTS.has(ext)) {
+        if (!opts.apiKey) return 'エラー: 画像読み込みにはAPIキーが必要です'
+        const base64 = readFileSync(args.path).toString('base64')
+        const mimeType = MIME[ext] || 'image/jpeg'
+        const client = new OpenAI({
+          apiKey: opts.apiKey,
+          ...(httpsAgent ? { httpAgent: httpsAgent } : {})
+        })
+        const res = await client.chat.completions.create({
+          model: opts.model || 'gpt-4.1-2025-04-14',
+          messages: [{
+            role: 'user',
+            content: [
+              { type: 'image_url', image_url: { url: `data:${mimeType};base64,${base64}` } },
+              { type: 'text', text: 'この画像の内容を詳しく説明してください。テキストが含まれている場合はすべて書き起こしてください。' }
+            ]
+          }],
+          max_tokens: 2000
+        })
+        return res.choices[0].message.content
+      }
+
       return readFileSync(args.path, 'utf-8')
     }
 
