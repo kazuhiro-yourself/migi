@@ -73,18 +73,28 @@ const agent = new MigiAgent({ context, promptFn, apiKey, model, name: agentName,
   const today = new Date().toISOString().split('T')[0]
   console.log('\n' + chalk.bold.cyan(`─── ${agentName} `) + chalk.dim('─'.repeat(Math.max(0, (process.stdout.columns || 80) - agentName.length - 5))))
   try {
-    await agent.chat(
-      `起動した。以下の手順で今日の状況を確認して、簡潔にダッシュボードを表示してから、今一番優先すべきことを1つだけ提案して：\n` +
-      `1. todos/${today}.md を read_file で読んで未完了タスクを確認（ファイルがなければスキップ）\n` +
-      `2. search_content で「- \\[ \\]」を .company/ ディレクトリ全体から検索して、部署ごとの未完了タスクも集約する\n` +
-      `3. .migi/memory/next-actions.md があれば読む\n` +
-      `4. todos/ と .company/ の両方を合わせたダッシュボード（未完了の件数サマリー、ソース別）をコンパクトに出して、一言で「今日はこれから」と提案する\n` +
-      `   - 未完了タスクは 1. 2. 3. と通し番号を付けて表示する（ファイルには書かない、表示だけ）\n` +
-      `   - ユーザーが「N番完了」と言ったら、その番号のタスクを特定してファイルの [ ] を [x] に書き換える\n` +
-      `（詳細な説明はいらない。テンポよく）`
-    )
+    const _abort = new AbortController()
+    const _sigint = () => { process.stdout.write(chalk.yellow('\n  キャンセルしました\n')); _abort.abort() }
+    process.once('SIGINT', _sigint)
+    try {
+      await agent.chat(
+        `起動した。以下の手順で今日の状況を確認して、簡潔にダッシュボードを表示してから、今一番優先すべきことを1つだけ提案して：\n` +
+        `1. todos/${today}.md を read_file で読んで未完了タスクを確認（ファイルがなければスキップ）\n` +
+        `2. search_content で「- \\[ \\]」を .company/ ディレクトリ全体から検索して、部署ごとの未完了タスクも集約する\n` +
+        `3. .migi/memory/next-actions.md があれば読む\n` +
+        `4. todos/ と .company/ の両方を合わせたダッシュボード（未完了の件数サマリー、ソース別）をコンパクトに出して、一言で「今日はこれから」と提案する\n` +
+        `   - 未完了タスクは 1. 2. 3. と通し番号を付けて表示する（ファイルには書かない、表示だけ）\n` +
+        `   - ユーザーが「N番完了」と言ったら、その番号のタスクを特定してファイルの [ ] を [x] に書き換える\n` +
+        `（詳細な説明はいらない。テンポよく）`,
+        _abort.signal
+      )
+    } finally {
+      process.removeListener('SIGINT', _sigint)
+    }
   } catch (err) {
-    console.error(chalk.red('  起動チェック失敗: ' + err.message))
+    if (err.name !== 'AbortError') {
+      console.error(chalk.red('  起動チェック失敗: ' + err.message))
+    }
   }
 }
 
@@ -193,11 +203,22 @@ async function readChatInput() {
       }
 
       if (key.ctrl && key.name === 'c') {
-        if (drawPending) { drawPending = false; draw() }
-        process.stdout.write(`\x1b[${drawnLines - 1 - curLine}B\n`)
-        process.stdin.removeListener('keypress', onKey)
-        if (process.stdin.isTTY) process.stdin.setRawMode(false)
-        resolve(null)
+        const isEmpty = lines.every(l => l.length === 0)
+        if (!isEmpty) {
+          // バッファをクリアして再描画（終了しない）
+          lines.splice(0, lines.length, '')
+          curLine = 0
+          cursorPos = 0
+          scheduleDraw()
+        } else {
+          // 空の状態で Ctrl+C → ヒントだけ出してそのまま
+          process.stdout.write(`\x1b[${drawnLines - 1 - curLine}B\r\n`)
+          process.stdout.write(chalk.dim('  終了するには /exit を入力してください') + '\r\n')
+          drawnLines = 0
+          cursorLine = 0
+          draw()
+        }
+        return
       }
 
       if (key.name === 'return') {
@@ -340,6 +361,14 @@ async function prompt() {
     return prompt()
   }
 
+  // --- Ctrl+C で処理キャンセル（アプリ継続）---
+  const abortController = new AbortController()
+  const sigintHandler = () => {
+    process.stdout.write(chalk.yellow('\n  キャンセルしました\n'))
+    abortController.abort()
+  }
+  process.once('SIGINT', sigintHandler)
+
   // --- スキルルーティング ---
   const parsed = parseSkillInput(input)
   if (parsed) {
@@ -348,12 +377,15 @@ async function prompt() {
       console.log('\n' + sepWithLabel(chalk.bold.cyan(agentName) + chalk.dim(`  [スキル: ${parsed.name}]`)))
       const expanded = expandSkill(skill.content, parsed.args)
       try {
-        await agent.chat(expanded)
+        await agent.chat(expanded, abortController.signal)
       } catch (err) {
-        console.error(chalk.red('\n  エラー: ' + err.message + '\n'))
+        if (err.name !== 'AbortError') console.error(chalk.red('\n  エラー: ' + err.message + '\n'))
+      } finally {
+        process.removeListener('SIGINT', sigintHandler)
       }
       return prompt()
     } else {
+      process.removeListener('SIGINT', sigintHandler)
       console.log(chalk.yellow(`\n  スキル「${parsed.name}」が見つかりません。`))
       console.log(chalk.dim(`  .migi/skills/${parsed.name}.md を作成してください。`))
       return prompt()
@@ -363,9 +395,11 @@ async function prompt() {
   // --- 通常チャット ---
   console.log('\n' + sepWithLabel(chalk.bold.cyan(agentName)))
   try {
-    await agent.chat(input)
+    await agent.chat(input, abortController.signal)
   } catch (err) {
-    console.error(chalk.red('\n  エラー: ' + err.message + '\n'))
+    if (err.name !== 'AbortError') console.error(chalk.red('\n  エラー: ' + err.message + '\n'))
+  } finally {
+    process.removeListener('SIGINT', sigintHandler)
   }
 
   prompt()

@@ -206,7 +206,7 @@ JSON形式のみで返答（他のテキスト不要）:
     this.history = cleaned
   }
 
-  async chat(userMessage) {
+  async chat(userMessage, signal = null) {
     this._sanitizeHistory()
     this.history.push({ role: 'user', content: userMessage })
 
@@ -225,7 +225,8 @@ JSON形式のみで返答（他のテキスト不要）:
         messages,
         tools: this.tools,
         tool_choice: 'auto',
-        stream: true
+        stream: true,
+        ...(signal ? { signal } : {})
       })
 
       let content = ''
