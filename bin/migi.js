@@ -66,78 +66,105 @@ console.log(chalk.dim('  /exit       終了\n'))
 
 const agent = new MigiAgent({ context, promptFn, apiKey, model, name: agentName, userName, teamsWebhookUrl })
 
-// ---- メインループ ----
-function prompt() {
-  rl.question(chalk.cyan('> '), async (line) => {
-    const input = line.trim()
-    if (!input) return prompt()
+const SEP = chalk.dim('─'.repeat(50))
 
-    // --- ビルトインコマンド ---
-    if (input === '/exit' || input === '/quit') {
-      console.log(chalk.cyan(`\n  お疲れ様でした！またね。\n`))
-      process.exit(0)
-    }
-
-    if (input === '/config') {
-      const current = loadGlobalConfig()
-      await runSetup(promptFn, current)
-      console.log(chalk.yellow('  再起動して設定を反映してください。\n'))
-      return prompt()
-    }
-
-    if (input === '/models') {
-      try {
-        console.log(chalk.dim('\n  利用可能なモデルを取得中...\n'))
-        const OpenAI = (await import('openai')).default
-        const client = new OpenAI({ apiKey })
-        const res = await client.models.list()
-        const models = res.data
-          .map(m => m.id)
-          .filter(id => id.includes('gpt') || id.includes('o1') || id.includes('o3') || id.includes('o4'))
-          .sort()
-        console.log(chalk.cyan('  利用可能なモデル:'))
-        for (const m of models) {
-          const mark = m === model ? chalk.green(' ← 現在') : ''
-          console.log(chalk.dim(`  • ${m}`) + mark)
-        }
-        console.log(chalk.dim('\n  /config でモデルを変更できます。\n'))
-      } catch (err) {
-        console.error(chalk.red('\n  取得失敗: ' + err.message + '\n'))
-      }
-      return prompt()
-    }
-
-    // --- スキルルーティング ---
-    const parsed = parseSkillInput(input)
-    if (parsed) {
-      const skill = resolveSkill(parsed.name, process.cwd())
-      if (skill) {
-        console.log(chalk.dim(`  [スキル: ${parsed.name}]\n`))
-        const expanded = expandSkill(skill.content, parsed.args)
-        try {
-          const reply = await agent.chat(expanded)
-          console.log('\n' + reply + '\n')
-        } catch (err) {
-          console.error(chalk.red('\n  エラー: ' + err.message + '\n'))
-        }
-        return prompt()
+// ---- 複数行入力（空行で送信） ----
+async function readMultiLine() {
+  const lines = []
+  process.stdout.write(chalk.dim('  Enter で改行 / 空行で送信\n'))
+  return new Promise((resolve) => {
+    const onLine = (line) => {
+      if (line === '' && lines.length > 0) {
+        rl.removeListener('line', onLine)
+        resolve(lines.join('\n'))
       } else {
-        console.log(chalk.yellow(`  スキル「${parsed.name}」が見つかりません。`))
-        console.log(chalk.dim(`  .migi/skills/${parsed.name}.md を作成してください。\n`))
-        return prompt()
+        lines.push(line)
+        process.stdout.write(chalk.cyan('  '))
       }
     }
-
-    // --- 通常チャット ---
-    try {
-      const reply = await agent.chat(input)
-      console.log('\n' + reply + '\n')
-    } catch (err) {
-      console.error(chalk.red('\n  エラー: ' + err.message + '\n'))
-    }
-
-    prompt()
+    process.stdout.write(chalk.cyan('  '))
+    rl.on('line', onLine)
   })
+}
+
+// ---- メインループ ----
+async function prompt() {
+  console.log('\n' + SEP)
+  process.stdout.write(chalk.bold.cyan(`  ${userName || 'あなた'}\n`) + SEP + '\n')
+
+  const input = (await readMultiLine()).trim()
+  if (!input) return prompt()
+
+  // --- ビルトインコマンド ---
+  if (input === '/exit' || input === '/quit') {
+    console.log(chalk.cyan(`\n  お疲れ様でした！またね。\n`))
+    process.exit(0)
+  }
+
+  if (input === '/config') {
+    const current = loadGlobalConfig()
+    await runSetup(promptFn, current)
+    console.log(chalk.yellow('  再起動して設定を反映してください。\n'))
+    return prompt()
+  }
+
+  if (input === '/models') {
+    try {
+      console.log(chalk.dim('\n  利用可能なモデルを取得中...\n'))
+      const OpenAI = (await import('openai')).default
+      const client = new OpenAI({ apiKey })
+      const res = await client.models.list()
+      const models = res.data
+        .map(m => m.id)
+        .filter(id => id.includes('gpt') || id.includes('o1') || id.includes('o3') || id.includes('o4'))
+        .sort()
+      console.log(chalk.cyan('  利用可能なモデル:'))
+      for (const m of models) {
+        const mark = m === model ? chalk.green(' ← 現在') : ''
+        console.log(chalk.dim(`  • ${m}`) + mark)
+      }
+      console.log(chalk.dim('\n  /config でモデルを変更できます。\n'))
+    } catch (err) {
+      console.error(chalk.red('\n  取得失敗: ' + err.message + '\n'))
+    }
+    return prompt()
+  }
+
+  // --- スキルルーティング ---
+  const parsed = parseSkillInput(input)
+  if (parsed) {
+    const skill = resolveSkill(parsed.name, process.cwd())
+    if (skill) {
+      console.log('\n' + SEP)
+      console.log(chalk.bold.cyan(`  ${agentName}`) + chalk.dim(`  [スキル: ${parsed.name}]`))
+      console.log(SEP)
+      const expanded = expandSkill(skill.content, parsed.args)
+      try {
+        const reply = await agent.chat(expanded)
+        console.log('\n' + reply + '\n')
+      } catch (err) {
+        console.error(chalk.red('\n  エラー: ' + err.message + '\n'))
+      }
+      return prompt()
+    } else {
+      console.log(chalk.yellow(`\n  スキル「${parsed.name}」が見つかりません。`))
+      console.log(chalk.dim(`  .migi/skills/${parsed.name}.md を作成してください。`))
+      return prompt()
+    }
+  }
+
+  // --- 通常チャット ---
+  console.log('\n' + SEP)
+  console.log(chalk.bold.cyan(`  ${agentName}`))
+  console.log(SEP)
+  try {
+    const reply = await agent.chat(input)
+    console.log('\n' + reply + '\n')
+  } catch (err) {
+    console.error(chalk.red('\n  エラー: ' + err.message + '\n'))
+  }
+
+  prompt()
 }
 
 prompt()
