@@ -8,6 +8,8 @@ import { loadContext } from '../src/context.js'
 import { loadGlobalConfig, runSetup } from '../src/setup.js'
 import { resolveSkill, parseSkillInput, expandSkill } from '../src/skills.js'
 import { isEmptyWorkspace, runOnboarding } from '../src/onboarding.js'
+import { createRequire } from 'module'
+const { version } = createRequire(import.meta.url)('../package.json')
 
 dotenv.config()
 
@@ -55,7 +57,7 @@ if (isEmptyWorkspace(cwd)) {
 const { context, loaded } = await loadContext(cwd)
 
 // ---- 起動メッセージ ----
-console.log(chalk.bold.cyan(`\n  ${agentName}  —  by MAKE U FREE`))
+console.log(chalk.bold.cyan(`\n  ${agentName}  —  by MAKE U FREE`) + chalk.dim(`  v${version}`))
 console.log(chalk.gray(`  モデル: ${model}`))
 if (loaded.length > 0) {
   for (const l of loaded) console.log(chalk.dim(`  ✓ ${l}`))
