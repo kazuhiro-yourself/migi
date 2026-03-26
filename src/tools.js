@@ -4,7 +4,9 @@ import { dirname, extname } from 'path'
 import { request } from 'https'
 import { glob } from 'glob'
 import xlsxPkg from 'xlsx'
-import pdfParse from 'pdf-parse'
+import { createRequire } from 'module'
+const require = createRequire(import.meta.url)
+const pdfParse = require('pdf-parse')
 import AdmZip from 'adm-zip'
 import OpenAI from 'openai'
 import { httpsAgent } from './tls.js'
