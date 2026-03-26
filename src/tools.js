@@ -4,7 +4,8 @@ import { dirname, extname } from 'path'
 import { request } from 'https'
 import { glob } from 'glob'
 import xlsxPkg from 'xlsx'
-import officeParser from 'officeparser'
+import pdfParse from 'pdf-parse'
+import AdmZip from 'adm-zip'
 import OpenAI from 'openai'
 import { httpsAgent } from './tls.js'
 const { readFile: xlsxReadFile, utils: xlsxUtils } = xlsxPkg
@@ -143,11 +144,35 @@ export async function executeTool(name, args, opts = {}) {
         return result.join('\n\n')
       }
 
-      // PDF / PowerPoint / Word
-      if (OFFICE_EXTS.has(ext)) {
+      // PDF
+      if (ext === '.pdf') {
         try {
-          const text = await officeParser.parseOfficeAsync(args.path)
-          return text?.trim() || '(テキストが抽出できませんでした)'
+          const buf = readFileSync(args.path)
+          const data = await pdfParse(buf)
+          return data.text?.trim() || '(テキストが抽出できませんでした)'
+        } catch (err) {
+          return `エラー: PDFの解析に失敗しました: ${err.message}`
+        }
+      }
+
+      // PowerPoint（PPTX）/ Word（DOCX）→ ZIPを展開してXMLからテキスト抽出
+      if (['.pptx', '.ppt', '.docx', '.doc', '.odp', '.odt'].includes(ext)) {
+        try {
+          const zip = new AdmZip(args.path)
+          const entries = zip.getEntries()
+          const xmlTexts = []
+          for (const entry of entries) {
+            const name = entry.entryName
+            const isSlide = name.startsWith('ppt/slides/slide') && name.endsWith('.xml')
+            const isDoc = name === 'word/document.xml'
+            const isOdp = name === 'content.xml'
+            if (isSlide || isDoc || isOdp) {
+              const xml = entry.getData().toString('utf-8')
+              const text = xml.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+              if (text) xmlTexts.push(text)
+            }
+          }
+          return xmlTexts.join('\n\n') || '(テキストが抽出できませんでした)'
         } catch (err) {
           return `エラー: ファイルの解析に失敗しました: ${err.message}`
         }
