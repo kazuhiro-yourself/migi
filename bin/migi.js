@@ -86,21 +86,30 @@ async function readChatInput() {
     const lines = ['']
     let curLine = 0
     let drawnLines = 0
+    let lastLineCount = 0
 
     emitKeypressEvents(process.stdin)
     if (process.stdin.isTTY) process.stdin.setRawMode(true)
 
     function draw() {
       const w = process.stdout.columns || 80
+
+      // 行数が変わっていない（通常の文字入力）→ 現在行だけ上書き。セパレーター・ガイドは触らない
+      if (lines.length === lastLineCount && drawnLines > 0) {
+        const prefix = curLine === 0 ? PFIRST : PCONT
+        process.stdout.write('\r\x1b[K' + chalk.cyan(prefix) + lines[curLine])
+        return
+      }
+
+      // 行数変化 or 初回 → 全体を再描画
+      lastLineCount = lines.length
       const allLines = [
         ...lines.map((l, i) => chalk.cyan(i === 0 ? PFIRST : PCONT) + l),
         chalk.dim('─'.repeat(w)),
         chalk.dim(`  ✦ ${model}  ·  Shift+Enterで改行 / Enterで送信`)
       ]
 
-      // すべての操作を1つのバッファにまとめてから一括書き込み（ちらつき防止）
       let buf = ''
-
       if (drawnLines > 0) {
         buf += `\x1b[${drawnLines}A\x1b[1G`
         for (let i = 0; i < drawnLines; i++) buf += '\x1b[2K\n'
