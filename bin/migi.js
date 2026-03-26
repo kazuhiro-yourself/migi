@@ -75,9 +75,10 @@ const agent = new MigiAgent({ context, promptFn, apiKey, model, name: agentName,
   try {
     await agent.chat(
       `起動した。以下の手順で今日の状況を確認して、簡潔にダッシュボードを表示してから、今一番優先すべきことを1つだけ提案して：\n` +
-      `1. todos/${today}.md を read_file で読んで未完了タスクを確認\n` +
-      `2. .migi/memory/next-actions.md があれば読む\n` +
-      `3. ダッシュボード（完了済み・未完了の件数サマリー）をコンパクトに出して、一言で「今日はこれから」と提案する\n` +
+      `1. todos/${today}.md を read_file で読んで未完了タスクを確認（ファイルがなければスキップ）\n` +
+      `2. search_content で「- \\[ \\]」を .company/ ディレクトリ全体から検索して、部署ごとの未完了タスクも集約する\n` +
+      `3. .migi/memory/next-actions.md があれば読む\n` +
+      `4. todos/ と .company/ の両方を合わせたダッシュボード（未完了の件数サマリー、ソース別）をコンパクトに出して、一言で「今日はこれから」と提案する\n` +
       `（詳細な説明はいらない。テンポよく）`
     )
   } catch (err) {
