@@ -1,6 +1,7 @@
 import { readFileSync, writeFileSync, appendFileSync, existsSync, mkdirSync } from 'fs'
 import { execSync } from 'child_process'
 import { dirname, extname } from 'path'
+import { diffLines } from 'diff'
 import { request } from 'https'
 import { glob } from 'glob'
 import xlsxPkg from 'xlsx'
@@ -126,6 +127,42 @@ export const teamsToolSchema = {
   }
 }
 
+// ---- diff 表示 ----
+
+import chalk from 'chalk'
+
+function showDiff(path, oldContent, newContent) {
+  const MAX_LINES = 50  // 長すぎる diff は省略
+
+  if (oldContent === null) {
+    console.log(chalk.green(`  + ${path} (新規作成)`))
+    return
+  }
+
+  if (oldContent === newContent) {
+    console.log(chalk.dim(`  = ${path} (変更なし)`))
+    return
+  }
+
+  const parts = diffLines(oldContent, newContent)
+  let shown = 0
+  let truncated = false
+
+  for (const part of parts) {
+    if (!part.added && !part.removed) continue
+    const lines = part.value.replace(/\n$/, '').split('\n')
+    for (const line of lines) {
+      if (shown >= MAX_LINES) { truncated = true; break }
+      if (part.added)   console.log(chalk.green(`  + ${line}`))
+      if (part.removed) console.log(chalk.red(`  - ${line}`))
+      shown++
+    }
+    if (truncated) break
+  }
+
+  if (truncated) console.log(chalk.dim(`  … (省略)`))
+}
+
 // ---- ツール実行 ----
 
 export async function executeTool(name, args, opts = {}) {
@@ -209,14 +246,18 @@ export async function executeTool(name, args, opts = {}) {
     case 'write_file': {
       const dir = dirname(args.path)
       if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+      const oldContent = existsSync(args.path) ? readFileSync(args.path, 'utf-8') : null
       writeFileSync(args.path, args.content, 'utf-8')
+      showDiff(args.path, oldContent, args.content)
       return `完了: ${args.path} に書き込みました`
     }
 
     case 'append_file': {
       const dir = dirname(args.path)
       if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+      const base = existsSync(args.path) ? readFileSync(args.path, 'utf-8') : ''
       appendFileSync(args.path, args.content, 'utf-8')
+      showDiff(args.path, base, base + args.content)
       return `完了: ${args.path} に追記しました`
     }
 
