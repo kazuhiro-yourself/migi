@@ -87,9 +87,17 @@ async function readChatInput() {
     let curLine = 0
     let drawnLines = 0
     let cursorLine = 0  // カーソルの物理行（drawn area 先頭からの offset）
+    let drawPending = false
 
     emitKeypressEvents(process.stdin)
     if (process.stdin.isTTY) process.stdin.setRawMode(true)
+
+    // ペースト等の連続入力をまとめて1回の描画にするためのデバウンス
+    function scheduleDraw() {
+      if (drawPending) return
+      drawPending = true
+      setImmediate(() => { drawPending = false; draw() })
+    }
 
     function draw() {
       const w = process.stdout.columns || 80
@@ -136,11 +144,12 @@ async function readChatInput() {
 
     const onKey = (str, key) => {
       if (!key) {
-        if (str) { lines[curLine] += str; draw() }
+        if (str) { lines[curLine] += str; scheduleDraw() }
         return
       }
 
       if (key.ctrl && key.name === 'c') {
+        if (drawPending) { drawPending = false; draw() }  // カーソル位置を確定させてから終了
         process.stdout.write(`\x1b[${drawnLines - 1 - curLine}B\n`)
         process.stdin.removeListener('keypress', onKey)
         if (process.stdin.isTTY) process.stdin.setRawMode(false)
@@ -153,9 +162,10 @@ async function readChatInput() {
         if (key.meta || key.shift) {
           lines.splice(curLine + 1, 0, '')
           curLine++
-          draw()
+          scheduleDraw()
         } else {
-          // Enter → 送信
+          // Enter → 送信（保留中の描画があれば先に確定）
+          if (drawPending) { drawPending = false; draw() }
           const content = lines.join('\n').trim()
           if (!content) return
           process.stdout.write(`\x1b[${drawnLines - 1 - curLine}B\n`)
@@ -169,18 +179,18 @@ async function readChatInput() {
       if (key.name === 'backspace') {
         if (lines[curLine].length > 0) {
           lines[curLine] = lines[curLine].slice(0, -1)
-          draw()
+          scheduleDraw()
         } else if (curLine > 0) {
           lines.splice(curLine, 1)
           curLine--
-          draw()
+          scheduleDraw()
         }
         return
       }
 
       if (str && !key.ctrl && !key.meta) {
         lines[curLine] += str
-        draw()
+        scheduleDraw()
       }
     }
 
