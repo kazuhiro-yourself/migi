@@ -92,30 +92,30 @@ async function readChatInput() {
 
     function draw() {
       const w = process.stdout.columns || 80
-
-      // 前回描画分をクリア
-      if (drawnLines > 0) {
-        process.stdout.write(`\x1b[${drawnLines}A\x1b[1G`)
-        for (let i = 0; i < drawnLines; i++) {
-          process.stdout.write('\x1b[2K\n')
-        }
-        process.stdout.write(`\x1b[${drawnLines}A\x1b[1G`)
-      }
-
-      // 入力行 + セパレーター + ガイド を描画
       const allLines = [
         ...lines.map((l, i) => chalk.cyan(i === 0 ? PFIRST : PCONT) + l),
         chalk.dim('─'.repeat(w)),
         chalk.dim(`  ✦ ${model}  ·  Shift+Enterで改行 / Enterで送信`)
       ]
-      drawnLines = allLines.length
-      process.stdout.write(allLines.join('\n') + '\n')
 
-      // カーソルを入力行の末尾に移動
+      // すべての操作を1つのバッファにまとめてから一括書き込み（ちらつき防止）
+      let buf = ''
+
+      if (drawnLines > 0) {
+        buf += `\x1b[${drawnLines}A\x1b[1G`
+        for (let i = 0; i < drawnLines; i++) buf += '\x1b[2K\n'
+        buf += `\x1b[${drawnLines}A\x1b[1G`
+      }
+
+      drawnLines = allLines.length
+      buf += allLines.join('\n') + '\n'
+
       const linesBelow = drawnLines - curLine
-      if (linesBelow > 0) process.stdout.write(`\x1b[${linesBelow}A`)
+      if (linesBelow > 0) buf += `\x1b[${linesBelow}A`
       const col = (curLine === 0 ? PFIRST : PCONT).length + lines[curLine].length + 1
-      process.stdout.write(`\x1b[${col}G`)
+      buf += `\x1b[${col}G`
+
+      process.stdout.write(buf)
     }
 
     draw()
