@@ -119,7 +119,8 @@ async function readChatInput() {
       }
 
       // ④ curLine の行まで戻る
-      const linesFromBottom = drawnLines - 1 - curLine
+      // step②+③後のカーソル位置は max(新行数, 旧行数)-1 行目
+      const linesFromBottom = Math.max(drawnLines, oldDrawnLines) - 1 - curLine
       if (linesFromBottom > 0) buf += `\x1b[${linesFromBottom}A`
       buf += '\r'
 
