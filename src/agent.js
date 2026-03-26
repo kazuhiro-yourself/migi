@@ -4,6 +4,7 @@ import { homedir } from 'os'
 import { toolSchemas, teamsToolSchema, executeTool } from './tools.js'
 import { createPermissionChecker } from './permissions.js'
 import { httpsAgent } from './tls.js'
+import { Spinner } from './spinner.js'
 
 export class MigiAgent {
   constructor({ context = '', promptFn = null, apiKey = null, model = 'gpt-4.1-2025-04-14', name = 'Migi', userName = '', teamsWebhookUrl = '' } = {}) {
@@ -92,13 +93,17 @@ ${userNameLine}
       ...this.history
     ]
 
+    const spinner = new Spinner()
+
     while (true) {
+      spinner.start('考え中…')
       const response = await this.client.chat.completions.create({
         model: this.model,
         messages,
         tools: this.tools,
         tool_choice: 'auto'
       })
+      spinner.stop()
 
       const choice = response.choices[0]
       messages.push(choice.message)
@@ -117,21 +122,23 @@ ${userNameLine}
           const args = JSON.parse(toolCall.function.arguments)
           const name = toolCall.function.name
 
-          console.log(chalk.dim(`\n  [${name}]`))
+          console.log(chalk.dim(`  ⚙ ${name}`))
 
           const approved = await this.checkPermission(name, args)
           let result
 
           if (approved) {
+            spinner.start(`実行中: ${name}`)
             try {
               result = await executeTool(name, args, {
-              teamsWebhookUrl: this.teamsWebhookUrl,
-              apiKey: this.apiKey,
-              model: this.model
-            })
+                teamsWebhookUrl: this.teamsWebhookUrl,
+                apiKey: this.apiKey,
+                model: this.model
+              })
             } catch (err) {
               result = `エラー: ${err.message}`
             }
+            spinner.stop()
           } else {
             result = 'ユーザーによりキャンセルされました'
             console.log(chalk.dim('  → キャンセル'))
