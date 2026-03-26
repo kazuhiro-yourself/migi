@@ -66,7 +66,17 @@ console.log(chalk.dim('  /exit       終了\n'))
 
 const agent = new MigiAgent({ context, promptFn, apiKey, model, name: agentName, userName, teamsWebhookUrl })
 
-function sep() { return chalk.dim('─'.repeat(process.stdout.columns || 80)) }
+function sep() {
+  const w = process.stdout.columns || 80
+  return chalk.dim('─'.repeat(w))
+}
+
+function sepWithLabel(label) {
+  const w = process.stdout.columns || 80
+  const left = '── ' + label + ' '
+  const right = '─'.repeat(Math.max(0, w - left.length))
+  return chalk.dim(left + right)
+}
 
 // ---- 複数行入力（空行で送信）----
 async function readMultiLine() {
@@ -75,7 +85,7 @@ async function readMultiLine() {
     const onLine = (line) => {
       if (line === '' && lines.length > 0) {
         rl.removeListener('line', onLine)
-        // 入力ボックス下辺 + 欄外ステータス
+        // 入力ボックス下辺（欄の閉じ）+ 欄外ガイド
         console.log(sep())
         console.log(chalk.dim(`  ✦ ${model}  ·  Enterで改行 / 空行で送信`))
         resolve(lines.join('\n'))
@@ -91,10 +101,8 @@ async function readMultiLine() {
 
 // ---- メインループ ----
 async function prompt() {
-  // 入力ボックス上辺
-  console.log('\n' + sep())
-  console.log(chalk.bold.cyan(`  ${userName || 'あなた'}`))
-  console.log(sep())
+  // 入力ボックス上辺（ユーザー名をセパレーターに埋め込む）
+  console.log('\n' + sepWithLabel(chalk.bold.cyan(userName || 'あなた')))
 
   const input = (await readMultiLine()).trim()
   if (!input) return prompt()
@@ -139,9 +147,7 @@ async function prompt() {
   if (parsed) {
     const skill = resolveSkill(parsed.name, process.cwd())
     if (skill) {
-      console.log('\n' + sep())
-      console.log(chalk.bold.cyan(`  ${agentName}`) + chalk.dim(`  [スキル: ${parsed.name}]`))
-      console.log(sep())
+      console.log('\n' + sepWithLabel(chalk.bold.cyan(agentName) + chalk.dim(`  [スキル: ${parsed.name}]`)))
       const expanded = expandSkill(skill.content, parsed.args)
       try {
         const reply = await agent.chat(expanded)
@@ -158,9 +164,7 @@ async function prompt() {
   }
 
   // --- 通常チャット ---
-  console.log('\n' + sep())
-  console.log(chalk.bold.cyan(`  ${agentName}`))
-  console.log(sep())
+  console.log('\n' + sepWithLabel(chalk.bold.cyan(agentName)))
   try {
     const reply = await agent.chat(input)
     console.log('\n' + reply + '\n')
