@@ -127,14 +127,14 @@ async function readChatInput() {
     const PCONT  = '    '
     const lines = ['']
     let curLine = 0
+    let cursorPos = 0      // 行内のカーソル位置（文字インデックス）
     let drawnLines = 0
-    let cursorLine = 0  // カーソルの物理行（drawn area 先頭からの offset）
+    let cursorLine = 0     // カーソルの物理行（drawn area 先頭からの offset）
     let drawPending = false
 
     emitKeypressEvents(process.stdin)
     if (process.stdin.isTTY) process.stdin.setRawMode(true)
 
-    // ペースト等の連続入力をまとめて1回の描画にするためのデバウンス
     function scheduleDraw() {
       if (drawPending) return
       drawPending = true
@@ -145,7 +145,7 @@ async function readChatInput() {
       const w = process.stdout.columns || 80
       const newLines = [
         ...lines.map((l, i) => chalk.cyan(i === 0 ? PFIRST : PCONT) + l),
-        chalk.dim('─'.repeat(w - 1)),  // w-1: 行末での自動折り返し防止
+        chalk.dim('─'.repeat(w - 1)),
         chalk.dim(`  ✦ ${model}  ·  Alt+Enterで改行 / Enterで送信`)
       ]
       const oldDrawnLines = drawnLines
@@ -153,30 +153,25 @@ async function readChatInput() {
 
       let buf = ''
 
-      // ① drawn area 先頭まで戻る（cursorLine = カーソルが今いる物理行）
       if (cursorLine > 0) buf += `\x1b[${cursorLine}A`
       buf += '\r'
 
-      // ② 各行を上書き。「先クリア→描画」ではなく「描画→行末クリア」でちらつき防止
       for (let i = 0; i < newLines.length; i++) {
         buf += newLines[i] + '\x1b[K'
         if (i < newLines.length - 1) buf += '\r\n'
       }
 
-      // ③ 行数が減った場合、余分な古い行をクリア
       for (let i = newLines.length; i < oldDrawnLines; i++) {
         buf += '\r\n\x1b[2K'
       }
 
-      // ④ curLine の行まで戻る
-      // step②+③後のカーソル位置は max(新行数, 旧行数)-1 行目
       const linesFromBottom = Math.max(drawnLines, oldDrawnLines) - 1 - curLine
       if (linesFromBottom > 0) buf += `\x1b[${linesFromBottom}A`
       buf += '\r'
 
-      // ⑤ カーソルを入力内容の末尾へ（全角文字は2カラム幅なので displayWidth を使う）
+      // カーソルをcursorPosの位置へ（末尾ではなく現在位置）
       const prefix = curLine === 0 ? PFIRST : PCONT
-      buf += `\x1b[${prefix.length + displayWidth(lines[curLine]) + 1}G`
+      buf += `\x1b[${prefix.length + displayWidth(lines[curLine].slice(0, cursorPos)) + 1}G`
 
       cursorLine = curLine
       process.stdout.write(buf)
@@ -186,7 +181,11 @@ async function readChatInput() {
 
     const onKey = (str, key) => {
       if (!key) {
-        if (str) { lines[curLine] += str; scheduleDraw() }
+        if (str) {
+          lines[curLine] = lines[curLine].slice(0, cursorPos) + str + lines[curLine].slice(cursorPos)
+          cursorPos += str.length
+          scheduleDraw()
+        }
         return
       }
 
@@ -195,17 +194,19 @@ async function readChatInput() {
         process.stdout.write(`\x1b[${drawnLines - 1 - curLine}B\n`)
         process.stdin.removeListener('keypress', onKey)
         if (process.stdin.isTTY) process.stdin.setRawMode(false)
-        resolve(null)  // null = 終了シグナル（メインループで後処理）
+        resolve(null)
       }
 
       if (key.name === 'return') {
-        // Alt+Enter（macOS: Option+Enter）または Shift+Enter → 改行
         if (key.meta || key.shift) {
-          lines.splice(curLine + 1, 0, '')
+          // カーソル位置で行を分割して改行
+          const rest = lines[curLine].slice(cursorPos)
+          lines[curLine] = lines[curLine].slice(0, cursorPos)
+          lines.splice(curLine + 1, 0, rest)
           curLine++
+          cursorPos = 0
           scheduleDraw()
         } else {
-          // Enter → 送信（保留中の描画があれば先に確定）
           if (drawPending) { drawPending = false; draw() }
           const content = lines.join('\n').trim()
           if (!content) return
@@ -218,10 +219,15 @@ async function readChatInput() {
       }
 
       if (key.name === 'backspace') {
-        if (lines[curLine].length > 0) {
-          lines[curLine] = lines[curLine].slice(0, -1)
+        if (cursorPos > 0) {
+          lines[curLine] = lines[curLine].slice(0, cursorPos - 1) + lines[curLine].slice(cursorPos)
+          cursorPos--
           scheduleDraw()
         } else if (curLine > 0) {
+          // 行頭でbackspace → 前の行に結合
+          const prev = lines[curLine - 1]
+          cursorPos = prev.length
+          lines[curLine - 1] = prev + lines[curLine]
           lines.splice(curLine, 1)
           curLine--
           scheduleDraw()
@@ -229,8 +235,46 @@ async function readChatInput() {
         return
       }
 
+      if (key.name === 'delete') {
+        if (cursorPos < lines[curLine].length) {
+          lines[curLine] = lines[curLine].slice(0, cursorPos) + lines[curLine].slice(cursorPos + 1)
+          scheduleDraw()
+        }
+        return
+      }
+
+      if (key.name === 'left') {
+        if (cursorPos > 0) { cursorPos--; scheduleDraw() }
+        else if (curLine > 0) { curLine--; cursorPos = lines[curLine].length; scheduleDraw() }
+        return
+      }
+
+      if (key.name === 'right') {
+        if (cursorPos < lines[curLine].length) { cursorPos++; scheduleDraw() }
+        else if (curLine < lines.length - 1) { curLine++; cursorPos = 0; scheduleDraw() }
+        return
+      }
+
+      if (key.name === 'up' && curLine > 0) {
+        curLine--
+        cursorPos = Math.min(cursorPos, lines[curLine].length)
+        scheduleDraw()
+        return
+      }
+
+      if (key.name === 'down' && curLine < lines.length - 1) {
+        curLine++
+        cursorPos = Math.min(cursorPos, lines[curLine].length)
+        scheduleDraw()
+        return
+      }
+
+      if (key.name === 'home') { cursorPos = 0; scheduleDraw(); return }
+      if (key.name === 'end')  { cursorPos = lines[curLine].length; scheduleDraw(); return }
+
       if (str && !key.ctrl && !key.meta) {
-        lines[curLine] += str
+        lines[curLine] = lines[curLine].slice(0, cursorPos) + str + lines[curLine].slice(cursorPos)
+        cursorPos += str.length
         scheduleDraw()
       }
     }
