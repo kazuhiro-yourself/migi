@@ -86,47 +86,46 @@ async function readChatInput() {
     const lines = ['']
     let curLine = 0
     let drawnLines = 0
-    let lastLineCount = 0
-    let cursorLine = 0  // カーソルが実際にいる物理行（drawn area 先頭からの offset）
+    let cursorLine = 0  // カーソルの物理行（drawn area 先頭からの offset）
 
     emitKeypressEvents(process.stdin)
     if (process.stdin.isTTY) process.stdin.setRawMode(true)
 
     function draw() {
       const w = process.stdout.columns || 80
-
-      // 行数が変わっていない（通常の文字入力）→ 現在行だけ上書き。セパレーター・ガイドは触らない
-      if (lines.length === lastLineCount && drawnLines > 0) {
-        const prefix = curLine === 0 ? PFIRST : PCONT
-        process.stdout.write('\r\x1b[K' + chalk.cyan(prefix) + lines[curLine])
-        cursorLine = curLine
-        return
-      }
-
-      // 行数変化 or 初回 → 全体を再描画
-      lastLineCount = lines.length
-      const allLines = [
+      const newLines = [
         ...lines.map((l, i) => chalk.cyan(i === 0 ? PFIRST : PCONT) + l),
-        chalk.dim('─'.repeat(w)),
-        chalk.dim(`  ✦ ${model}  ·  Shift+Enterで改行 / Enterで送信`)
+        chalk.dim('─'.repeat(w - 1)),  // w-1: 行末での自動折り返し防止
+        chalk.dim(`  ✦ ${model}  ·  Alt+Enterで改行 / Enterで送信`)
       ]
+      const oldDrawnLines = drawnLines
+      drawnLines = newLines.length
 
       let buf = ''
-      if (drawnLines > 0) {
-        // cursorLine = カーソルの現在位置。先頭行まで戻ってから全行クリア
-        if (cursorLine > 0) buf += `\x1b[${cursorLine}A`
-        buf += `\x1b[1G`
-        for (let i = 0; i < drawnLines; i++) buf += '\x1b[2K\n'
-        buf += `\x1b[${drawnLines}A\x1b[1G`
+
+      // ① drawn area 先頭まで戻る（cursorLine = カーソルが今いる物理行）
+      if (cursorLine > 0) buf += `\x1b[${cursorLine}A`
+      buf += '\r'
+
+      // ② 各行を上書き。「先クリア→描画」ではなく「描画→行末クリア」でちらつき防止
+      for (let i = 0; i < newLines.length; i++) {
+        buf += newLines[i] + '\x1b[K'
+        if (i < newLines.length - 1) buf += '\r\n'
       }
 
-      drawnLines = allLines.length
-      buf += allLines.join('\n') + '\n'
+      // ③ 行数が減った場合、余分な古い行をクリア
+      for (let i = newLines.length; i < oldDrawnLines; i++) {
+        buf += '\r\n\x1b[2K'
+      }
 
-      const linesBelow = drawnLines - curLine
-      if (linesBelow > 0) buf += `\x1b[${linesBelow}A`
-      const col = (curLine === 0 ? PFIRST : PCONT).length + lines[curLine].length + 1
-      buf += `\x1b[${col}G`
+      // ④ curLine の行まで戻る
+      const linesFromBottom = drawnLines - 1 - curLine
+      if (linesFromBottom > 0) buf += `\x1b[${linesFromBottom}A`
+      buf += '\r'
+
+      // ⑤ カーソルを入力内容の末尾へ
+      const prefix = curLine === 0 ? PFIRST : PCONT
+      buf += `\x1b[${prefix.length + lines[curLine].length + 1}G`
 
       cursorLine = curLine
       process.stdout.write(buf)
@@ -141,7 +140,7 @@ async function readChatInput() {
       }
 
       if (key.ctrl && key.name === 'c') {
-        process.stdout.write(`\x1b[${drawnLines - curLine}B\n`)
+        process.stdout.write(`\x1b[${drawnLines - 1 - curLine}B\n`)
         process.stdin.removeListener('keypress', onKey)
         if (process.stdin.isTTY) process.stdin.setRawMode(false)
         console.log(chalk.cyan('\n  お疲れ様でした！またね。\n'))
@@ -149,8 +148,8 @@ async function readChatInput() {
       }
 
       if (key.name === 'return') {
-        if (key.shift) {
-          // Shift+Enter → 改行
+        // Alt+Enter（macOS: Option+Enter）または Shift+Enter → 改行
+        if (key.meta || key.shift) {
           lines.splice(curLine + 1, 0, '')
           curLine++
           draw()
@@ -158,7 +157,7 @@ async function readChatInput() {
           // Enter → 送信
           const content = lines.join('\n').trim()
           if (!content) return
-          process.stdout.write(`\x1b[${drawnLines - curLine}B\n`)
+          process.stdout.write(`\x1b[${drawnLines - 1 - curLine}B\n`)
           process.stdin.removeListener('keypress', onKey)
           if (process.stdin.isTTY) process.stdin.setRawMode(false)
           resolve(content)
