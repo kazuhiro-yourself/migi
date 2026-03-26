@@ -87,6 +87,7 @@ async function readChatInput() {
     let curLine = 0
     let drawnLines = 0
     let lastLineCount = 0
+    let cursorLine = 0  // カーソルが実際にいる物理行（drawn area 先頭からの offset）
 
     emitKeypressEvents(process.stdin)
     if (process.stdin.isTTY) process.stdin.setRawMode(true)
@@ -98,6 +99,7 @@ async function readChatInput() {
       if (lines.length === lastLineCount && drawnLines > 0) {
         const prefix = curLine === 0 ? PFIRST : PCONT
         process.stdout.write('\r\x1b[K' + chalk.cyan(prefix) + lines[curLine])
+        cursorLine = curLine
         return
       }
 
@@ -111,7 +113,9 @@ async function readChatInput() {
 
       let buf = ''
       if (drawnLines > 0) {
-        buf += `\x1b[${drawnLines}A\x1b[1G`
+        // cursorLine = カーソルの現在位置。先頭行まで戻ってから全行クリア
+        if (cursorLine > 0) buf += `\x1b[${cursorLine}A`
+        buf += `\x1b[1G`
         for (let i = 0; i < drawnLines; i++) buf += '\x1b[2K\n'
         buf += `\x1b[${drawnLines}A\x1b[1G`
       }
@@ -124,6 +128,7 @@ async function readChatInput() {
       const col = (curLine === 0 ? PFIRST : PCONT).length + lines[curLine].length + 1
       buf += `\x1b[${col}G`
 
+      cursorLine = curLine
       process.stdout.write(buf)
     }
 
