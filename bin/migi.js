@@ -79,6 +79,29 @@ function sepWithLabel(label) {
 }
 
 // ---- チャット入力（Enter送信 / Shift+Enter改行）----
+// 全角文字（日本語・絵文字など）は端末上で2カラム幅を占める
+// string.length はコードポイント数なので、カーソル位置計算に使うと日本語入力でズレる
+function displayWidth(str) {
+  let w = 0
+  for (const ch of str) {
+    const cp = ch.codePointAt(0)
+    const wide =
+      (cp >= 0x1100 && cp <= 0x115F) ||  // Hangul Jamo
+      (cp >= 0x2E80 && cp <= 0x303F) ||  // CJK Radicals
+      (cp >= 0x3040 && cp <= 0x33FF) ||  // Hiragana〜CJK Compat
+      (cp >= 0x3400 && cp <= 0x9FFF) ||  // CJK Unified
+      (cp >= 0xAC00 && cp <= 0xD7FF) ||  // Hangul Syllables
+      (cp >= 0xF900 && cp <= 0xFAFF) ||  // CJK Compat Ideographs
+      (cp >= 0xFE10 && cp <= 0xFE1F) ||  // Vertical Forms
+      (cp >= 0xFE30 && cp <= 0xFE6F) ||  // CJK Compat Forms
+      (cp >= 0xFF01 && cp <= 0xFF60) ||  // Fullwidth ASCII
+      (cp >= 0xFFE0 && cp <= 0xFFE6) ||  // Fullwidth Signs
+      (cp >= 0x1F300 && cp <= 0x1FAFF)   // Emoji
+    w += wide ? 2 : 1
+  }
+  return w
+}
+
 async function readChatInput() {
   return new Promise((resolve) => {
     const PFIRST = '  > '
@@ -132,9 +155,9 @@ async function readChatInput() {
       if (linesFromBottom > 0) buf += `\x1b[${linesFromBottom}A`
       buf += '\r'
 
-      // ⑤ カーソルを入力内容の末尾へ
+      // ⑤ カーソルを入力内容の末尾へ（全角文字は2カラム幅なので displayWidth を使う）
       const prefix = curLine === 0 ? PFIRST : PCONT
-      buf += `\x1b[${prefix.length + lines[curLine].length + 1}G`
+      buf += `\x1b[${prefix.length + displayWidth(lines[curLine]) + 1}G`
 
       cursorLine = curLine
       process.stdout.write(buf)
