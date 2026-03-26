@@ -81,56 +81,92 @@ function sepWithLabel(label) {
 // ---- チャット入力（Enter送信 / Shift+Enter改行）----
 async function readChatInput() {
   return new Promise((resolve) => {
+    const PFIRST = '  > '
+    const PCONT  = '    '
     const lines = ['']
+    let curLine = 0
+    let drawnLines = 0
 
     emitKeypressEvents(process.stdin)
     if (process.stdin.isTTY) process.stdin.setRawMode(true)
-    process.stdout.write(chalk.cyan('  '))
+
+    function draw() {
+      const w = process.stdout.columns || 80
+
+      // 前回描画分をクリア
+      if (drawnLines > 0) {
+        process.stdout.write(`\x1b[${drawnLines}A\x1b[1G`)
+        for (let i = 0; i < drawnLines; i++) {
+          process.stdout.write('\x1b[2K\n')
+        }
+        process.stdout.write(`\x1b[${drawnLines}A\x1b[1G`)
+      }
+
+      // 入力行 + セパレーター + ガイド を描画
+      const allLines = [
+        ...lines.map((l, i) => chalk.cyan(i === 0 ? PFIRST : PCONT) + l),
+        chalk.dim('─'.repeat(w)),
+        chalk.dim(`  ✦ ${model}  ·  Shift+Enterで改行 / Enterで送信`)
+      ]
+      drawnLines = allLines.length
+      process.stdout.write(allLines.join('\n') + '\n')
+
+      // カーソルを入力行の末尾に移動
+      const linesBelow = drawnLines - curLine
+      if (linesBelow > 0) process.stdout.write(`\x1b[${linesBelow}A`)
+      const col = (curLine === 0 ? PFIRST : PCONT).length + lines[curLine].length + 1
+      process.stdout.write(`\x1b[${col}G`)
+    }
+
+    draw()
 
     const onKey = (str, key) => {
       if (!key) {
-        // IME確定などの複合文字
-        if (str) { lines[lines.length - 1] += str; process.stdout.write(str) }
+        if (str) { lines[curLine] += str; draw() }
         return
       }
 
-      // Ctrl+C
       if (key.ctrl && key.name === 'c') {
-        console.log(chalk.cyan('\n\n  お疲れ様でした！またね。\n'))
+        process.stdout.write(`\x1b[${drawnLines - curLine}B\n`)
+        process.stdin.removeListener('keypress', onKey)
+        if (process.stdin.isTTY) process.stdin.setRawMode(false)
+        console.log(chalk.cyan('\n  お疲れ様でした！またね。\n'))
         process.exit(0)
       }
 
       if (key.name === 'return') {
         if (key.shift) {
           // Shift+Enter → 改行
-          lines.push('')
-          process.stdout.write('\n  ')
+          lines.splice(curLine + 1, 0, '')
+          curLine++
+          draw()
         } else {
           // Enter → 送信
           const content = lines.join('\n').trim()
-          if (!content) return  // 空は無視
+          if (!content) return
+          process.stdout.write(`\x1b[${drawnLines - curLine}B\n`)
           process.stdin.removeListener('keypress', onKey)
           if (process.stdin.isTTY) process.stdin.setRawMode(false)
-          process.stdout.write('\n')
-          console.log(sep())
-          console.log(chalk.dim(`  ✦ ${model}  ·  Shift+Enterで改行 / Enterで送信`))
           resolve(content)
         }
         return
       }
 
       if (key.name === 'backspace') {
-        const cur = lines[lines.length - 1]
-        if (cur.length > 0) {
-          lines[lines.length - 1] = cur.slice(0, -1)
-          process.stdout.write('\b \b')
+        if (lines[curLine].length > 0) {
+          lines[curLine] = lines[curLine].slice(0, -1)
+          draw()
+        } else if (curLine > 0) {
+          lines.splice(curLine, 1)
+          curLine--
+          draw()
         }
         return
       }
 
       if (str && !key.ctrl && !key.meta) {
-        lines[lines.length - 1] += str
-        process.stdout.write(str)
+        lines[curLine] += str
+        draw()
       }
     }
 
