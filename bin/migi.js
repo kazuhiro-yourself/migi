@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import '../src/tls.js'  // 企業CA（Zscaler等）を起動直後に読み込む
-import readline from 'readline'
+import readline, { emitKeypressEvents } from 'readline'
 import chalk from 'chalk'
 import dotenv from 'dotenv'
 import { MigiAgent } from '../src/agent.js'
@@ -78,24 +78,63 @@ function sepWithLabel(label) {
   return chalk.dim(left + right)
 }
 
-// ---- 複数行入力（空行で送信）----
-async function readMultiLine() {
-  const lines = []
+// ---- チャット入力（Enter送信 / Shift+Enter改行）----
+async function readChatInput() {
   return new Promise((resolve) => {
-    const onLine = (line) => {
-      if (line === '' && lines.length > 0) {
-        rl.removeListener('line', onLine)
-        // 入力ボックス下辺（欄の閉じ）+ 欄外ガイド
-        console.log(sep())
-        console.log(chalk.dim(`  ✦ ${model}  ·  Enterで改行 / 空行で送信`))
-        resolve(lines.join('\n'))
-      } else {
-        lines.push(line)
-        process.stdout.write(chalk.cyan('  '))
+    const lines = ['']
+
+    emitKeypressEvents(process.stdin)
+    if (process.stdin.isTTY) process.stdin.setRawMode(true)
+    process.stdout.write(chalk.cyan('  '))
+
+    const onKey = (str, key) => {
+      if (!key) {
+        // IME確定などの複合文字
+        if (str) { lines[lines.length - 1] += str; process.stdout.write(str) }
+        return
+      }
+
+      // Ctrl+C
+      if (key.ctrl && key.name === 'c') {
+        console.log(chalk.cyan('\n\n  お疲れ様でした！またね。\n'))
+        process.exit(0)
+      }
+
+      if (key.name === 'return') {
+        if (key.shift) {
+          // Shift+Enter → 改行
+          lines.push('')
+          process.stdout.write('\n  ')
+        } else {
+          // Enter → 送信
+          const content = lines.join('\n').trim()
+          if (!content) return  // 空は無視
+          process.stdin.removeListener('keypress', onKey)
+          if (process.stdin.isTTY) process.stdin.setRawMode(false)
+          process.stdout.write('\n')
+          console.log(sep())
+          console.log(chalk.dim(`  ✦ ${model}  ·  Shift+Enterで改行 / Enterで送信`))
+          resolve(content)
+        }
+        return
+      }
+
+      if (key.name === 'backspace') {
+        const cur = lines[lines.length - 1]
+        if (cur.length > 0) {
+          lines[lines.length - 1] = cur.slice(0, -1)
+          process.stdout.write('\b \b')
+        }
+        return
+      }
+
+      if (str && !key.ctrl && !key.meta) {
+        lines[lines.length - 1] += str
+        process.stdout.write(str)
       }
     }
-    process.stdout.write(chalk.cyan('  '))
-    rl.on('line', onLine)
+
+    process.stdin.on('keypress', onKey)
   })
 }
 
@@ -104,7 +143,7 @@ async function prompt() {
   // 入力ボックス上辺（ユーザー名をセパレーターに埋め込む）
   console.log('\n' + sepWithLabel(chalk.bold.cyan(userName || 'あなた')))
 
-  const input = (await readMultiLine()).trim()
+  const input = (await readChatInput()).trim()
   if (!input) return prompt()
 
   // --- ビルトインコマンド ---
