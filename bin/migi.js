@@ -79,6 +79,8 @@ const agent = new MigiAgent({ context, promptFn, apiKey, model, name: agentName,
       `2. search_content で「- \\[ \\]」を .company/ ディレクトリ全体から検索して、部署ごとの未完了タスクも集約する\n` +
       `3. .migi/memory/next-actions.md があれば読む\n` +
       `4. todos/ と .company/ の両方を合わせたダッシュボード（未完了の件数サマリー、ソース別）をコンパクトに出して、一言で「今日はこれから」と提案する\n` +
+      `   - 未完了タスクは 1. 2. 3. と通し番号を付けて表示する（ファイルには書かない、表示だけ）\n` +
+      `   - ユーザーが「N番完了」と言ったら、その番号のタスクを特定してファイルの [ ] を [x] に書き換える\n` +
       `（詳細な説明はいらない。テンポよく）`
     )
   } catch (err) {
