@@ -11,6 +11,7 @@ const require = createRequire(import.meta.url)
 const _pdfParseModule = require('pdf-parse')
 const pdfParse = typeof _pdfParseModule === 'function' ? _pdfParseModule : _pdfParseModule.default
 import AdmZip from 'adm-zip'
+import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs'
 import OpenAI from 'openai'
 import { httpsAgent } from './tls.js'
 const { readFile: xlsxReadFile, utils: xlsxUtils } = xlsxPkg
@@ -233,7 +234,20 @@ export async function executeTool(name, args, opts = {}) {
       if (ext === '.pdf') {
         const buf = readFileSync(args.path)
 
-        // Step 1: テキストPDFとして抽出を試みる
+        // Step 1: pdfjs-dist でテキスト抽出（最も信頼性が高い）
+        try {
+          const doc = await pdfjsLib.getDocument({ data: new Uint8Array(buf) }).promise
+          const pages = []
+          for (let p = 1; p <= doc.numPages; p++) {
+            const page = await doc.getPage(p)
+            const content = await page.getTextContent()
+            pages.push(content.items.map(item => item.str).join(''))
+          }
+          const text = pages.join('\n').trim()
+          if (text) return text
+        } catch (_) {}
+
+        // Step 2: pdf-parse でも試みる（フォールバック）
         if (typeof pdfParse === 'function') {
           try {
             const data = await pdfParse(buf)
@@ -242,7 +256,7 @@ export async function executeTool(name, args, opts = {}) {
           } catch (_) {}
         }
 
-        // Step 2: 画像PDFとしてVision APIでOCR（ネイティブ依存なし）
+        // Step 3: 画像PDFとしてVision APIでOCR（ネイティブ依存なし）
         if (!opts.apiKey) return '(テキストが抽出できませんでした)'
         const images = extractImagesFromPdf(buf)
         if (images.length === 0) return '(テキストも画像も抽出できませんでした)'

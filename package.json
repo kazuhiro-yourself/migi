@@ -1,6 +1,6 @@
 {
   "name": "@make-u-free/migi",
-  "version": "0.5.12",
+  "version": "0.5.13",
   "description": "Your AI right-hand agent. Works anywhere, with any LLM API.",
   "type": "module",
   "bin": {
@@ -17,6 +17,7 @@
     "glob": "^11.0.0",
     "openai": "^4.0.0",
     "pdf-parse": "^2.4.5",
+    "pdfjs-dist": "^5.5.207",
     "xlsx": "^0.18.5"
   },
   "engines": {
