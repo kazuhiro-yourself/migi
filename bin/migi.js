@@ -149,12 +149,11 @@ async function readChatInput() {
       }
 
       if (key.ctrl && key.name === 'c') {
-        if (drawPending) { drawPending = false; draw() }  // カーソル位置を確定させてから終了
+        if (drawPending) { drawPending = false; draw() }
         process.stdout.write(`\x1b[${drawnLines - 1 - curLine}B\n`)
         process.stdin.removeListener('keypress', onKey)
         if (process.stdin.isTTY) process.stdin.setRawMode(false)
-        console.log(chalk.cyan('\n  お疲れ様でした！またね。\n'))
-        process.exit(0)
+        resolve(null)  // null = 終了シグナル（メインループで後処理）
       }
 
       if (key.name === 'return') {
@@ -198,18 +197,29 @@ async function readChatInput() {
   })
 }
 
+// ---- セッション終了（サマリー保存 → 挨拶 → exit） ----
+async function gracefulExit() {
+  const saved = await agent.saveSummary(cwd)
+  if (saved) {
+    console.log(chalk.dim(`\n  セッションを記録しました → ${saved}`))
+  }
+  console.log(chalk.cyan(`\n  お疲れ様でした！またね。\n`))
+  process.exit(0)
+}
+
 // ---- メインループ ----
 async function prompt() {
   // 入力ボックス上辺（ユーザー名をセパレーターに埋め込む）
   console.log('\n' + sepWithLabel(chalk.bold.cyan(userName || 'あなた')))
 
-  const input = (await readChatInput()).trim()
+  const rawInput = await readChatInput()
+  if (rawInput === null) return gracefulExit()  // Ctrl+C
+  const input = rawInput.trim()
   if (!input) return prompt()
 
   // --- ビルトインコマンド ---
   if (input === '/exit' || input === '/quit') {
-    console.log(chalk.cyan(`\n  お疲れ様でした！またね。\n`))
-    process.exit(0)
+    return gracefulExit()
   }
 
   if (input === '/config') {

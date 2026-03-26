@@ -1,6 +1,8 @@
 import OpenAI from 'openai'
 import chalk from 'chalk'
 import { homedir } from 'os'
+import { existsSync, appendFileSync, mkdirSync } from 'fs'
+import { join, dirname } from 'path'
 import { toolSchemas, teamsToolSchema, executeTool } from './tools.js'
 import { createPermissionChecker } from './permissions.js'
 import { httpsAgent } from './tls.js'
@@ -45,14 +47,18 @@ ${userNameLine}
 - 「どうしますか？」と聞く前に、自分でできることをやりきる
 - 完了したらまとめて報告する。途中経過は簡潔に
 
-## メモリ
-- ユーザーが「覚えておいて」「記録して」「remember」と言ったら、必ず memory.md に書き出す
-- グローバルメモリ: ${homedir()}/.migi/memory.md（どのワークスペースでも使う情報）
-- ワークスペースメモリ: ${cwd}/.migi/memory.md（このプロジェクト固有の情報）
-- 迷ったらグローバルメモリに書く
-- 形式: "## YYYY-MM-DD" の見出しの下に箇条書きで記録
-- 既存ファイルがあれば追記、なければ新規作成
-- 重要な意思決定・学び・好みは言われなくても「記録しておきましょうか？」と提案する
+## メモリと文脈の継続
+- グローバルメモリ: ${homedir()}/.migi/memory.md（ユーザーの好み・習慣・横断的な情報）
+- ワークスペースメモリ: ${cwd}/.migi/memory.md（このプロジェクト固有の情報・決定事項）
+- 形式: "## YYYY-MM-DD" の見出しの下に箇条書きで記録。既存ファイルがあれば追記
+- ユーザーが「覚えておいて」「remember」と言ったら必ず書き出す
+- 言われなくても、以下は自発的に記録する:
+  - 重要な意思決定・方針転換
+  - ユーザーの好み・こだわり・やり方のクセ
+  - 繰り返し登場するテーマやプロジェクト
+  - 「次回やること」として明確になったタスク
+- セッション開始時にメモリの内容を参照し、前回の続きから自然に入る
+- 過去の記録と矛盾することをユーザーが言ったら「前回と変わりましたか？」と確認する
 
 ## 環境
 - 今日の日付: ${new Date().toISOString().split('T')[0]}
@@ -65,6 +71,53 @@ ${userNameLine}
       : ''
     this.systemPrompt = BASE_SYSTEM_PROMPT + teamsPrompt +
       (context ? `\n## ロードされたコンテキスト\n${context}` : '')
+  }
+
+  // セッションの会話をサマリーして memory.md に保存する
+  async saveSummary(cwd) {
+    // ユーザー発言が2回未満なら保存しない（短すぎるセッション）
+    const userTurns = this.history.filter(m => m.role === 'user').length
+    if (userTurns < 2) return null
+
+    const spinner = new Spinner()
+    spinner.start('セッションを記録中…')
+
+    try {
+      const response = await this.client.chat.completions.create({
+        model: this.model,
+        messages: [
+          { role: 'system', content: this.systemPrompt },
+          ...this.history,
+          {
+            role: 'user',
+            content: `このセッションを次回の文脈引き継ぎ用に要約してください。
+以下の形式で箇条書き3〜6行。日本語で簡潔に（1行50字以内）。
+
+- 話し合ったこと・決定したこと
+- 完了したこと・作ったもの
+- ユーザーについて学んだこと（好み・やり方など）
+- 次回やること（あれば）
+
+形式:「- 〜」の箇条書きのみ。見出しや前置きは不要。`
+          }
+        ]
+      })
+
+      const summary = response.choices[0].message.content.trim()
+      const today = new Date().toISOString().split('T')[0]
+      const entry = `\n## ${today}\n${summary}\n`
+
+      const memPath = join(cwd, '.migi', 'memory.md')
+      const dir = dirname(memPath)
+      if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+      appendFileSync(memPath, entry, 'utf-8')
+
+      spinner.stop()
+      return memPath
+    } catch (err) {
+      spinner.stop()
+      return null
+    }
   }
 
   // tool_calls に対応する tool 結果がない壊れた履歴を修復する
