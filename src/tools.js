@@ -134,14 +134,22 @@ function extractImagesFromPdf(buf) {
   const images = []
   let i = 0
 
-  while (i < buf.length - 1) {
-    // JPEG: FF D8 で始まり FF D9 で終わる
-    if (buf[i] === 0xFF && buf[i + 1] === 0xD8) {
-      const eoiIdx = buf.indexOf(Buffer.from([0xFF, 0xD9]), i + 2)
-      if (eoiIdx === -1) break
-      images.push({ data: buf.slice(i, eoiIdx + 2), mime: 'image/jpeg' })
-      i = eoiIdx + 2
-      continue
+  while (i < buf.length - 3) {
+    // JPEG: FF D8 で始まり、直後に FF E0〜EF（APPマーカー）か FF DB（DQT）が続く本物だけ拾う
+    if (buf[i] === 0xFF && buf[i + 1] === 0xD8 && buf[i + 2] === 0xFF) {
+      const nextMarker = buf[i + 3]
+      const isApp = nextMarker >= 0xE0 && nextMarker <= 0xEF  // JFIF / EXIF 等
+      const isDqt = nextMarker === 0xDB                        // 量子化テーブル
+      if (isApp || isDqt) {
+        const eoiIdx = buf.indexOf(Buffer.from([0xFF, 0xD9]), i + 4)
+        if (eoiIdx === -1) break
+        const data = buf.slice(i, eoiIdx + 2)
+        if (data.length > 1024) {  // 1KB未満はアイコン等のゴミなので除外
+          images.push({ data, mime: 'image/jpeg' })
+        }
+        i = eoiIdx + 2
+        continue
+      }
     }
 
     // PNG: 89 50 4E 47 0D 0A 1A 0A で始まる
@@ -152,7 +160,10 @@ function extractImagesFromPdf(buf) {
     ) {
       const iend = buf.indexOf(Buffer.from([0x49, 0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82]), i + 8)
       if (iend === -1) break
-      images.push({ data: buf.slice(i, iend + 8), mime: 'image/png' })
+      const data = buf.slice(i, iend + 8)
+      if (data.length > 1024) {
+        images.push({ data, mime: 'image/png' })
+      }
       i = iend + 8
       continue
     }
