@@ -249,8 +249,7 @@ async function prompt() {
       console.log('\n' + sepWithLabel(chalk.bold.cyan(agentName) + chalk.dim(`  [スキル: ${parsed.name}]`)))
       const expanded = expandSkill(skill.content, parsed.args)
       try {
-        const reply = await agent.chat(expanded)
-        console.log('\n' + reply + '\n')
+        await agent.chat(expanded)
       } catch (err) {
         console.error(chalk.red('\n  エラー: ' + err.message + '\n'))
       }
@@ -265,8 +264,7 @@ async function prompt() {
   // --- 通常チャット ---
   console.log('\n' + sepWithLabel(chalk.bold.cyan(agentName)))
   try {
-    const reply = await agent.chat(input)
-    console.log('\n' + reply + '\n')
+    await agent.chat(input)
   } catch (err) {
     console.error(chalk.red('\n  エラー: ' + err.message + '\n'))
   }

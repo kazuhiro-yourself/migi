@@ -97,28 +97,69 @@ ${userNameLine}
 
     while (true) {
       spinner.start('考え中…')
-      const response = await this.client.chat.completions.create({
+
+      const stream = await this.client.chat.completions.create({
         model: this.model,
         messages,
         tools: this.tools,
-        tool_choice: 'auto'
+        tool_choice: 'auto',
+        stream: true
       })
+
+      let content = ''
+      const tcMap = {}   // tool_calls をインデックスで蓄積
+      let finishReason = null
+      let streaming = false  // 最初のコンテンツが届いたか
+
+      for await (const chunk of stream) {
+        const choice = chunk.choices[0]
+        if (!choice) continue
+        const delta = choice.delta
+        if (choice.finish_reason) finishReason = choice.finish_reason
+
+        // テキストチャンク
+        if (delta?.content) {
+          if (!streaming) {
+            spinner.stop()
+            process.stdout.write('\n')
+            streaming = true
+          }
+          content += delta.content
+          process.stdout.write(delta.content)
+        }
+
+        // tool_calls チャンク（引数はストリームで分割されて届く）
+        if (delta?.tool_calls) {
+          for (const tc of delta.tool_calls) {
+            if (!tcMap[tc.index]) tcMap[tc.index] = { id: '', type: 'function', function: { name: '', arguments: '' } }
+            if (tc.id) tcMap[tc.index].id += tc.id
+            if (tc.function?.name) tcMap[tc.index].function.name += tc.function.name
+            if (tc.function?.arguments) tcMap[tc.index].function.arguments += tc.function.arguments
+          }
+        }
+      }
+
       spinner.stop()
 
-      const choice = response.choices[0]
-      messages.push(choice.message)
-      this.history.push(choice.message)
-
       // 通常の返答
-      if (choice.finish_reason === 'stop') {
-        return choice.message.content
+      if (finishReason === 'stop') {
+        process.stdout.write('\n\n')
+        const assistantMsg = { role: 'assistant', content }
+        messages.push(assistantMsg)
+        this.history.push(assistantMsg)
+        return content
       }
 
       // ツール呼び出し
-      if (choice.finish_reason === 'tool_calls') {
-        const toolResults = []
+      if (finishReason === 'tool_calls') {
+        if (streaming) process.stdout.write('\n')
+        const toolCalls = Object.values(tcMap)
+        const assistantMsg = { role: 'assistant', content: content || null, tool_calls: toolCalls }
+        messages.push(assistantMsg)
+        this.history.push(assistantMsg)
 
-        for (const toolCall of choice.message.tool_calls) {
+        const toolResults = []
+        for (const toolCall of toolCalls) {
           const args = JSON.parse(toolCall.function.arguments)
           const name = toolCall.function.name
 
