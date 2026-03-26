@@ -1,6 +1,6 @@
 {
   "name": "@make-u-free/migi",
-  "version": "0.5.7",
+  "version": "0.5.8",
   "description": "Your AI right-hand agent. Works anywhere, with any LLM API.",
   "type": "module",
   "bin": {

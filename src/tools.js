@@ -4,6 +4,7 @@ import { dirname, extname } from 'path'
 import { diffLines } from 'diff'
 import { request } from 'https'
 import { glob } from 'glob'
+import chalk from 'chalk'
 import xlsxPkg from 'xlsx'
 import { createRequire } from 'module'
 const require = createRequire(import.meta.url)
@@ -127,9 +128,42 @@ export const teamsToolSchema = {
   }
 }
 
-// ---- diff 表示 ----
+// ---- PDFから埋め込み画像を抽出（ネイティブ依存なし） ----
 
-import chalk from 'chalk'
+function extractImagesFromPdf(buf) {
+  const images = []
+  let i = 0
+
+  while (i < buf.length - 1) {
+    // JPEG: FF D8 で始まり FF D9 で終わる
+    if (buf[i] === 0xFF && buf[i + 1] === 0xD8) {
+      const eoiIdx = buf.indexOf(Buffer.from([0xFF, 0xD9]), i + 2)
+      if (eoiIdx === -1) break
+      images.push({ data: buf.slice(i, eoiIdx + 2), mime: 'image/jpeg' })
+      i = eoiIdx + 2
+      continue
+    }
+
+    // PNG: 89 50 4E 47 0D 0A 1A 0A で始まる
+    if (
+      i + 7 < buf.length &&
+      buf[i] === 0x89 && buf[i+1] === 0x50 && buf[i+2] === 0x4E && buf[i+3] === 0x47 &&
+      buf[i+4] === 0x0D && buf[i+5] === 0x0A && buf[i+6] === 0x1A && buf[i+7] === 0x0A
+    ) {
+      const iend = buf.indexOf(Buffer.from([0x49, 0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82]), i + 8)
+      if (iend === -1) break
+      images.push({ data: buf.slice(i, iend + 8), mime: 'image/png' })
+      i = iend + 8
+      continue
+    }
+
+    i++
+  }
+
+  return images
+}
+
+// ---- diff 表示 ----
 
 function showDiff(path, oldContent, newContent) {
   const MAX_LINES = 50  // 長すぎる diff は省略
@@ -185,13 +219,40 @@ export async function executeTool(name, args, opts = {}) {
 
       // PDF
       if (ext === '.pdf') {
+        const buf = readFileSync(args.path)
+
+        // Step 1: テキストPDFとして抽出を試みる
         try {
-          const buf = readFileSync(args.path)
           const data = await pdfParse(buf)
-          return data.text?.trim() || '(テキストが抽出できませんでした)'
-        } catch (err) {
-          return `エラー: PDFの解析に失敗しました: ${err.message}`
-        }
+          const text = data.text?.trim()
+          if (text) return text
+        } catch (_) {}
+
+        // Step 2: 画像PDFとしてVision APIでOCR（ネイティブ依存なし）
+        if (!opts.apiKey) return '(テキストが抽出できませんでした)'
+        const images = extractImagesFromPdf(buf)
+        if (images.length === 0) return '(テキストも画像も抽出できませんでした)'
+
+        const client = new OpenAI({
+          apiKey: opts.apiKey,
+          ...(httpsAgent ? { httpAgent: httpsAgent } : {})
+        })
+        const targets = images.slice(0, 10)  // 最大10ページ
+        const res = await client.chat.completions.create({
+          model: opts.model || 'gpt-4.1-2025-04-14',
+          messages: [{
+            role: 'user',
+            content: [
+              { type: 'text', text: 'このPDFのページ画像です。すべてのテキストを正確に書き起こしてください。' },
+              ...targets.map(img => ({
+                type: 'image_url',
+                image_url: { url: `data:${img.mime};base64,${img.data.toString('base64')}` }
+              }))
+            ]
+          }],
+          max_tokens: 4000
+        })
+        return res.choices[0].message.content
       }
 
       // PowerPoint（PPTX）/ Word（DOCX）→ ZIPを展開してXMLからテキスト抽出
