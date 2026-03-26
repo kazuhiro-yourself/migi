@@ -34,8 +34,21 @@ export async function loadContext(cwd = process.cwd()) {
   // 1. グローバルメモリ (~/.migi/memory.md)
   load('グローバルメモリ', join(homedir(), '.migi', 'memory.md'))
 
-  // 2. ワークスペースメモリ (.migi/memory.md)
-  load('ワークスペースメモリ', join(cwd, '.migi', 'memory.md'))
+  // 2. ワークスペースメモリ: インデックス + memory/ 以下の個別ファイル
+  load('ワークスペースメモリ(インデックス)', join(cwd, '.migi', 'memory.md'))
+  const memDir = join(cwd, '.migi', 'memory')
+  if (existsSync(memDir)) {
+    const memFiles = await glob('*.md', { cwd: memDir })
+    // next-actions を最後に（直近の文脈として読ませる）
+    memFiles.sort((a, b) => {
+      if (a === 'next-actions.md') return 1
+      if (b === 'next-actions.md') return -1
+      return a.localeCompare(b)
+    })
+    for (const f of memFiles) {
+      load(`メモリ/${f}`, join(memDir, f))
+    }
+  }
 
   // 3. ルートの MIGI.md → CLAUDE.md
   loadWithFallback('', cwd, 'CLAUDE.md')

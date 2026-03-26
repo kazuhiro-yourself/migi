@@ -1,8 +1,8 @@
 import OpenAI from 'openai'
 import chalk from 'chalk'
 import { homedir } from 'os'
-import { existsSync, appendFileSync, mkdirSync } from 'fs'
-import { join, dirname } from 'path'
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs'
+import { join } from 'path'
 import { toolSchemas, teamsToolSchema, executeTool } from './tools.js'
 import { createPermissionChecker } from './permissions.js'
 import { httpsAgent } from './tls.js'
@@ -57,17 +57,18 @@ ${userNameLine}
 - 完了したら1〜2文で報告。途中経過は出さない
 
 ## メモリと文脈の継続
-- グローバルメモリ: ${homedir()}/.migi/memory.md（ユーザーの好み・習慣・横断的な情報）
-- ワークスペースメモリ: ${cwd}/.migi/memory.md（このプロジェクト固有の情報・決定事項）
-- 形式: "## YYYY-MM-DD" の見出しの下に箇条書きで記録。既存ファイルがあれば追記
-- ユーザーが「覚えておいて」「remember」と言ったら必ず書き出す
-- 言われなくても、以下は自発的に記録する:
-  - 重要な意思決定・方針転換
-  - ユーザーの好み・こだわり・やり方のクセ
-  - 繰り返し登場するテーマやプロジェクト
-  - 「次回やること」として明確になったタスク
-- セッション開始時にメモリの内容を参照し、前回の続きから自然に入る
-- 過去の記録と矛盾することをユーザーが言ったら「前回と変わりましたか？」と確認する
+ワークスペースメモリは ${cwd}/.migi/memory/ に構造化して保存する:
+- projects.md   ── 進行中の仕事・状況
+- feedback.md   ── ユーザーの好み・作業スタイル・こだわり
+- next-actions.md ── 次回やること（毎セッション更新）
+
+グローバルメモリ: ${homedir()}/.migi/memory.md（横断的なユーザー情報）
+
+運用ルール:
+- セッション開始時にメモリを参照し、前回の続きから自然に入る
+- ユーザーが「覚えておいて」と言ったら write_file で即座に該当ファイルを更新
+- 重要な決定・好み・方針転換は言われなくても「記録しておきましょうか？」と提案
+- 過去の記録と矛盾したら「前回と変わりましたか？」と確認する
 
 ## 環境
 - 今日の日付: ${new Date().toISOString().split('T')[0]}
@@ -82,9 +83,8 @@ ${userNameLine}
       (context ? `\n## ロードされたコンテキスト\n${context}` : '')
   }
 
-  // セッションの会話をサマリーして memory.md に保存する
+  // セッション終了時にメモリファイルを構造化更新する
   async saveSummary(cwd) {
-    // ユーザー発言が2回未満なら保存しない（短すぎるセッション）
     const userTurns = this.history.filter(m => m.role === 'user').length
     if (userTurns < 2) return null
 
@@ -92,6 +92,20 @@ ${userNameLine}
     spinner.start('セッションを記録中…')
 
     try {
+      const memDir = join(cwd, '.migi', 'memory')
+      const files = ['projects.md', 'feedback.md', 'next-actions.md']
+
+      // 既存ファイルの内容を読む
+      const current = {}
+      for (const f of files) {
+        const p = join(memDir, f)
+        current[f] = existsSync(p) ? readFileSync(p, 'utf-8').trim() : '(未記録)'
+      }
+
+      const currentDump = files
+        .map(f => `### ${f}\n${current[f]}`)
+        .join('\n\n')
+
       const response = await this.client.chat.completions.create({
         model: this.model,
         messages: [
@@ -99,30 +113,42 @@ ${userNameLine}
           ...this.history,
           {
             role: 'user',
-            content: `このセッションを次回の文脈引き継ぎ用に要約してください。
-以下の形式で箇条書き3〜6行。日本語で簡潔に（1行50字以内）。
+            content: `このセッションの内容を踏まえ、以下のメモリファイルを更新してください。
 
-- 話し合ったこと・決定したこと
-- 完了したこと・作ったもの
-- ユーザーについて学んだこと（好み・やり方など）
-- 次回やること（あれば）
+現在の内容:
+${currentDump}
 
-形式:「- 〜」の箇条書きのみ。見出しや前置きは不要。`
+JSON形式のみで返答（他のテキスト不要）:
+{
+  "projects.md": "進行中の仕事・状況（15行以内）",
+  "feedback.md": "ユーザーの好み・作業スタイル・こだわり（15行以内）",
+  "next-actions.md": "次回やること（今回判明したもののみ・前回分は消す）"
+}
+
+ルール: 新情報は追加、古い情報は上書き、不要なものは削除。変化なければそのまま返す。`
           }
-        ]
+        ],
+        response_format: { type: 'json_object' }
       })
 
-      const summary = response.choices[0].message.content.trim()
-      const today = new Date().toISOString().split('T')[0]
-      const entry = `\n## ${today}\n${summary}\n`
+      const updates = JSON.parse(response.choices[0].message.content)
 
-      const memPath = join(cwd, '.migi', 'memory.md')
-      const dir = dirname(memPath)
-      if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
-      appendFileSync(memPath, entry, 'utf-8')
+      if (!existsSync(memDir)) mkdirSync(memDir, { recursive: true })
+
+      const updated = []
+      for (const [filename, content] of Object.entries(updates)) {
+        if (files.includes(filename) && content?.trim() && content.trim() !== '(未記録)') {
+          writeFileSync(join(memDir, filename), content.trim() + '\n', 'utf-8')
+          updated.push(filename)
+        }
+      }
+
+      // インデックスを更新
+      const indexLines = updated.map(f => `- [memory/${f}](memory/${f})`).join('\n')
+      writeFileSync(join(cwd, '.migi', 'memory.md'), `# メモリインデックス\n\n${indexLines}\n`, 'utf-8')
 
       spinner.stop()
-      return memPath
+      return memDir
     } catch (err) {
       spinner.stop()
       return null
