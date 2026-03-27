@@ -79,7 +79,10 @@ const agent = new MigiAgent({ context, promptFn, apiKey, model, name: agentName,
     try {
       await agent.chat(
         `起動した。以下の手順で今日の状況を確認して、簡潔にダッシュボードを表示してから、今一番優先すべきことを1つだけ提案して：\n` +
-        `1. todos/${today}.md を read_file で読んで未完了タスクを確認（ファイルがなければスキップ）\n` +
+        `1. todos/${today}.md を read_file で読んで未完了タスクを確認\n` +
+        `   - ファイルが存在しない場合は list_files で「todos/*.md」を検索し、最新の前日ファイルを read_file で読む\n` +
+        `   - 前日ファイルに未完了タスク（- [ ]）があれば「前日の未完了タスクを引き継いで今日のTODOを作成しましょうか？」と提案する（作成はユーザーの返答を待つ）\n` +
+        `   - 前日ファイルも存在しない場合のみ「TODOファイルがありません」と伝える\n` +
         `2. search_content で「- \\[ \\]」を .company/ ディレクトリ全体から検索して、部署ごとの未完了タスクも集約する\n` +
         `3. .migi/memory/next-actions.md があれば読む\n` +
         `4. todos/ と .company/ の両方を合わせたダッシュボード（未完了の件数サマリー、ソース別）をコンパクトに出して、一言で「今日はこれから」と提案する\n` +
