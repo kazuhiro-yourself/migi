@@ -220,14 +220,16 @@ JSON形式のみで返答（他のテキスト不要）:
     while (true) {
       spinner.start('考え中…')
 
-      const stream = await this.client.chat.completions.create({
-        model: this.model,
-        messages,
-        tools: this.tools,
-        tool_choice: 'auto',
-        stream: true,
-        ...(signal ? { signal } : {})
-      })
+      const stream = await this.client.chat.completions.create(
+        {
+          model: this.model,
+          messages,
+          tools: this.tools,
+          tool_choice: 'auto',
+          stream: true
+        },
+        signal ? { signal } : {}
+      )
 
       let content = ''
       const tcMap = {}   // tool_calls をインデックスで蓄積
